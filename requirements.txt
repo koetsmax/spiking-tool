@@ -1,0 +1,14 @@
+pydivert
+maxminddb
+maxminddb-geolite2
+uvicorn
+tomlkit
+PyQt6
+python-socketio
+pyautogui
+setuptools==67.6.0
+aiohttp
+pywin32
+psutil
+keyboard
+pynput
