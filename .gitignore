@@ -1,6 +1,7 @@
 spiker
 config.toml
 img
+SDK
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -3,9 +3,9 @@ from tkinter import ttk as tk
 from sot import Region
 from threadedsio import ThreadedSocketClient
 import traceback
-import time
 
 
+# pylint: disable=all
 class Client:
     def __init__(self, name):
         self.name = name
@@ -35,6 +35,10 @@ class ClientManager:
     def set_client_status(self, name, status):
         if isinstance(status, int):
             status = int(str(status)[2:])
+            # if the status is less than 3 characters long. add 0's in front of it untiul it is 3 characters long
+            if len(str(status)) < 3:
+                status = "0" * (3 - len(str(status))) + str(status)
+
         client = self.get_client(name)
         if client:
             client.status = status
@@ -52,6 +56,36 @@ class ClientManager:
             client.status_label.destroy()
             del self.clients[name]
             print(f"Client {name} removed")
+
+    def update_biggest_match(self, label):
+        # dictionary to count the frequency of each status
+        status_counts = {}
+
+        # iterate over all clients and update the status counts
+        for client_name, client in self.clients.items():
+            # check if the length is 3 characters long
+            if len(str(client.status)) == 3:
+                status_counts[client.status] = status_counts.get(client.status, []) + [
+                    client_name
+                ]
+
+        # find the status with the most matches
+        biggest_match = None
+        for status, clients in status_counts.items():
+            if biggest_match is None or len(clients) > len(
+                status_counts[biggest_match]
+            ):
+                biggest_match = status
+
+        # format the output string
+        if biggest_match:
+            matching_clients = ", ".join(status_counts[biggest_match])
+            num_matching_clients = len(status_counts[biggest_match])
+            label.configure(
+                text=f"Biggest match is {num_matching_clients} with port: {biggest_match} and client(s): {matching_clients}"
+            )
+        else:
+            label.configure(text="No matching status found")
 
 
 class Controller:
@@ -112,6 +146,9 @@ class Controller:
         tk.Label(self.client_list_frame, text="Status").grid(
             column=3, row=0, sticky=(W, E)
         )
+
+        self.biggest_match_label = tk.Label(self.mainframe, text="Biggest match: N/A")
+        self.biggest_match_label.grid(columnspan=4, row=99, sticky=(W, E))
 
         self.launch_game_buton = tk.Button(
             self.mainframe, text="launch game", command=self.launch_game
@@ -234,6 +271,7 @@ class Controller:
         @self.sio.event()
         def update_status(data):
             self.client_manager.set_client_status(data["client"], data["status"])
+            self.client_manager.update_biggest_match(self.biggest_match_label)
 
     def change_region(self, *args):
         self.sio.emit("region", self._change_region.get())
