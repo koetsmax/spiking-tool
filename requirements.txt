@@ -12,3 +12,6 @@ pywin32
 psutil
 keyboard
 pynput
+vgamepad
+ctypes
+struct

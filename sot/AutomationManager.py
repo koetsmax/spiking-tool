@@ -5,6 +5,7 @@ import win32gui
 import pyautogui
 import asyncio
 import pynput.mouse
+from sot import heading, walker
 
 
 class AutomationManager:
@@ -66,6 +67,20 @@ class AutomationManager:
         time.sleep(0.2)
         keyboard.press_and_release("enter")
         await sio.emit("update_status", data="Searching the seas")
+        while not pyautogui.locateOnScreen("img/loading.png", confidence=0.9):
+            await asyncio.sleep(0.5)
+            print("waiting for client to start loading button")
+            if self.stop:
+                return
+        await asyncio.sleep(1.5)
+        while pyautogui.locateOnScreen("img/loading.png", confidence=0.9):
+            await asyncio.sleep(0.5)
+            print("waiting for client to stop loading")
+            if self.stop:
+                return
+        await asyncio.sleep(1.5)
+        my_heading = heading.get_heading()
+        walker.commute(my_heading)
 
     async def reset(self, sio, leave, portspiking):
         if portspiking:
