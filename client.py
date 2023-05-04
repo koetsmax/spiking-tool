@@ -8,8 +8,6 @@ import tomlkit
 
 import sot
 
-ship_type = "Brigantine"
-
 
 def is_admin():
     try:
@@ -73,13 +71,12 @@ async def main():
 
     @sio.event()
     async def client_ship(data):
-        global ship_type
-        ship_type = data
+        await sota.set_ship(sio, data)
 
     @sio.event()
     async def launch_game(data):
         if config_file["name"] in data:
-            await sota.launch_game(sio, ship_type, leave=False)
+            await sota.launch_game(sio, leave=False)
 
     @sio.event()
     async def sail(data):
@@ -90,12 +87,17 @@ async def main():
     async def reset(data):
         if config_file["name"] in data:
             leave = True
-            await sota.reset(sio, ship_type, leave, sotc.portspike)
+            await sota.reset(sio, leave, sotc.portspike)
 
     @sio.event()
     async def kill_game(data):
         if config_file["name"] in data:
             await sota.kill_game(sio)
+
+    @sio.event()
+    async def stop_everything(data):
+        if config_file["name"] in data:
+            await sota.stop_everything(sio)
 
     async def on_join(ip, port):
         try:
@@ -106,7 +108,7 @@ async def main():
                 )
             else:
                 print(f"Join detected in {sotc.getServerInfo(ip)}: {ip}:{port}")
-        except:  # pylint: disable=bare-except
+        except:
             traceback.print_exc()
 
     sotc.events.join += on_join
@@ -119,7 +121,7 @@ async def main():
             await sio.wait()
         except socketio.exceptions.ConnectionError:
             pass
-        except:  # pylint: disable=bare-except
+        except:
             traceback.print_exc()
             input()
 

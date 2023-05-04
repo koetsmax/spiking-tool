@@ -117,6 +117,10 @@ class SpikingServer:
             await self.sio.emit("kill_game", data=data)
 
         @self.sio.event
+        async def stop_everything(sid, data):
+            await self.sio.emit("stop_everything", data=data)
+
+        @self.sio.event
         async def update_status(sid, data):
             client = self.clients[sid].name if sid in self.clients else sid
             await self.sio.emit(

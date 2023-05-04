@@ -1,5 +1,3 @@
-from win32gui import *
-import psutil
 import keyboard
 import time
 import win32gui
@@ -10,6 +8,10 @@ import pynput.mouse
 
 
 class AutomationManager:
+    def __init__(self):
+        self.stop = False
+        self.ship = "Brigantine"
+
     def window_enumeration_handler(self, hwnd, top_windows):
         """
         Function that gets all the windows and adds them to a list
@@ -39,7 +41,14 @@ class AutomationManager:
                 )
                 break
 
-    async def launch_game(self, sio, ship_type, leave):
+    async def set_ship(self, sio, ship_type):
+        """
+        Function that sets the ship type
+        """
+        self.ship = ship_type
+        await sio.emit("update_status", data=f"Ship set to {self.ship}")
+
+    async def launch_game(self, sio, leave):
         """
         Function that launches the game and gets the client to the set sail screen
         """
@@ -50,7 +59,7 @@ class AutomationManager:
         await asyncio.sleep(1.5)
         keyboard.press_and_release("enter")
         await asyncio.sleep(1.5)
-        await self.reset(sio, ship_type, leave, portspiking=False)
+        await self.reset(sio, leave, portspiking=False)
 
     async def sail(self, sio):
         self.activate_window("sea of thieves")
@@ -58,18 +67,22 @@ class AutomationManager:
         keyboard.press_and_release("enter")
         await sio.emit("update_status", data="Searching the seas")
 
-    async def reset(self, sio, ship_type, leave, portspiking):
+    async def reset(self, sio, leave, portspiking):
         if portspiking:
             while not pyautogui.locateOnScreen(
                 "img/portspike_connected.png", confidence=0.9
             ):
                 await asyncio.sleep(0.5)
                 print("waiting for portspike client to connect")
+                if self.stop:
+                    return
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
             while not pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
                 await asyncio.sleep(0.5)
                 print("waiting for rejoin prompt")
+                if self.stop:
+                    return
             keyboard.press_and_release("esc")
         elif leave:
             # Leave game
@@ -98,6 +111,8 @@ class AutomationManager:
             while not pyautogui.locateOnScreen("img/start_screen.png", confidence=0.9):
                 print("Waiting for start screen")
                 await asyncio.sleep(0.5)
+                if self.stop:
+                    return
             await sio.emit("update_status", data="Starting Game")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
@@ -106,6 +121,8 @@ class AutomationManager:
         while not pyautogui.locateOnScreen("img/play_screen.png", confidence=0.9):
             print("Waiting for play screen")
             await asyncio.sleep(0.5)
+            if self.stop:
+                return
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("right")
@@ -114,9 +131,9 @@ class AutomationManager:
         await asyncio.sleep(0.6)
 
         # select ship
-        print(ship_type)
+        print(self.ship)
         await sio.emit("update_status", data="Selecting ship")
-        if ship_type == "Captaincy":
+        if self.ship == "Captaincy":
             keyboard.press_and_release("right")
             await asyncio.sleep(0.3)
             while not pyautogui.locateOnScreen(
@@ -124,13 +141,17 @@ class AutomationManager:
             ):
                 print("Waiting for captaincy to load")
                 await asyncio.sleep(0.5)
+                if self.stop:
+                    return
             keyboard.press_and_release("enter")
             while not pyautogui.locateOnScreen("img/ship_loaded.png", confidence=0.9):
                 print("Waiting for captaincy ship to load")
                 await asyncio.sleep(0.5)
-        elif ship_type == "Brigantine":
+                if self.stop:
+                    return
+        elif self.ship == "Brigantine":
             keyboard.press_and_release("down")
-        elif ship_type == "Sloop":
+        elif self.ship == "Sloop":
             keyboard.press_and_release("down")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("down")
@@ -157,3 +178,13 @@ class AutomationManager:
         mouse.click(pynput.mouse.Button.left, 2)
         await asyncio.sleep(0.2)
         keyboard.press_and_release("alt+f4")
+
+    async def stop_everything(self, sio):
+        """
+        Function that stops all running functions
+        """
+        await sio.emit("update_status", data="Stopping everything")
+        self.stop = True
+        await asyncio.sleep(5)
+        self.stop = False
+        await sio.emit("update_status", data="No longer stopping everything")

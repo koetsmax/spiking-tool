@@ -5,7 +5,6 @@ from threadedsio import ThreadedSocketClient
 import traceback
 
 
-# pylint: disable=all
 class Client:
     def __init__(self, name):
         self.name = name
@@ -100,8 +99,7 @@ class Controller:
         self.mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
         self.root.columnconfigure(0, weight=1)
         self.root.columnconfigure(1, weight=1)
-        self.root.columnconfigure(2, weight=1)
-        self.root.columnconfigure(3, weight=1)
+        self.root.columnconfigure(99, weight=1)
         self.root.rowconfigure(0, weight=1)
         self.client_manager = ClientManager()
 
@@ -165,6 +163,11 @@ class Controller:
             self.mainframe, text="kill game", command=self.kill_game
         )
         self.kill_game_button.grid(columnspan=4, row=103, sticky=(W, E))
+
+        self.stop_everything_button = tk.Button(
+            self.mainframe, text="stop everything", command=self.stop_everything
+        )
+        self.stop_everything_button.grid(columnspan=4, row=104, sticky=(W, E))
 
         for child in self.mainframe.winfo_children():
             child.grid_configure(padx=5, pady=5)
@@ -298,6 +301,10 @@ class Controller:
     def kill_game(self):
         active_clients = self.client_manager.get_active_clients()
         self.sio.emit("kill_game", data=active_clients)
+
+    def stop_everything(self):
+        active_clients = self.client_manager.get_active_clients()
+        self.sio.emit("stop_everything", data=active_clients)
 
 
 # Start the SocketIO client
