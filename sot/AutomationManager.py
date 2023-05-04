@@ -90,7 +90,7 @@ class AutomationManager:
             self.activate_window("sea of thieves")
             await asyncio.sleep(0.2)
             keyboard.press_and_release("esc")
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.2)
             keyboard.press_and_release("down")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("down")
@@ -135,7 +135,7 @@ class AutomationManager:
         await sio.emit("update_status", data="Selecting ship")
         if self.ship == "Captaincy":
             keyboard.press_and_release("right")
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.6)
             while not pyautogui.locateOnScreen(
                 "img/captaincy_available.png", confidence=0.9
             ):
@@ -153,11 +153,11 @@ class AutomationManager:
             keyboard.press_and_release("down")
         elif self.ship == "Sloop":
             keyboard.press_and_release("down")
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.6)
             keyboard.press_and_release("down")
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
 
         # get to set sail screen
@@ -176,7 +176,7 @@ class AutomationManager:
         await asyncio.sleep(0.2)
         mouse = pynput.mouse.Controller()
         mouse.click(pynput.mouse.Button.left, 2)
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.5)
         keyboard.press_and_release("alt+f4")
 
     async def stop_everything(self, sio):
