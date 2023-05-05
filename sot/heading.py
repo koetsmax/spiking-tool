@@ -4,7 +4,6 @@ import struct
 import re
 import psutil
 
-
 MAX_PATH = 260
 MAX_MODULE_NAME32 = 255
 TH32CS_SNAPMODULE = 0x00000008
@@ -42,9 +41,15 @@ class SoTMemoryReader:
 
 
 def get_heading():
+    outpost_headings = [340, 226, 301, 162, 341, 339]
+
     heading = int(SoTMemoryReader().myheading()) + 90
     if heading < 0:
         heading += 360
+    # If the heading is not an outpost heading we are most likely still in a loading screen, thus it failed
+    if heading not in outpost_headings:
+        return 0
+
     print(heading)
 
     if heading == 340:

@@ -70,6 +70,10 @@ async def main():
         print(f"Portspiking set to {sotc.portspike}")
 
     @sio.event()
+    async def safe_mode(data):
+        await sota.set_safe_mode(data)
+
+    @sio.event()
     async def client_ship(data):
         await sota.set_ship(sio, data)
 

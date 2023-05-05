@@ -19,7 +19,6 @@ class SpikingServer:
         self.clients = {}
         self.controller = False
         self.region = None
-        self.portspiking = None
 
         @self.sio.event
         async def connect(sid, environ, auth):
@@ -77,8 +76,12 @@ class SpikingServer:
         @self.sio.event
         async def portspiking(sid, data):
             print(f"Portspike set to {data}")
-            self.portspiking = data
             await self.sio.emit("portspiking", data)
+
+        @self.sio.event
+        async def safe_mode(sid, data):
+            print(f"Safe mode set to {data}")
+            await self.sio.emit("safe_mode", data)
 
         @self.sio.event
         async def change_ship(sid, data):

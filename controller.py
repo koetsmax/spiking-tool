@@ -124,6 +124,17 @@ class Controller:
         )
         self.portspike_checkbox.grid(column=2, row=2, sticky=(W, E))
 
+        self._set_safe_mode = BooleanVar(value=True)
+        self.safe_mode_checkbox = tk.Checkbutton(
+            self.mainframe,
+            variable=self._set_safe_mode,
+            text="Safe mode",
+            onvalue=1,
+            offvalue=0,
+            command=self.set_safe_mode,
+        )
+        self.safe_mode_checkbox.grid(column=2, row=3, sticky=(W, E))
+
         # Create a new frcame for the list of clients
         self.client_list_frame = tk.Frame(self.mainframe, padding="5 5 5 5")
         self.client_list_frame.grid(columnspan=4, row=6, sticky=(W, E))
@@ -284,6 +295,12 @@ class Controller:
             self.sio.emit("portspiking", True)
         else:
             self.sio.emit("portspiking", False)
+
+    def set_safe_mode(self):
+        if "selected" in self.safe_mode_checkbox.state():
+            self.sio.emit("safe_mode", True)
+        else:
+            self.sio.emit("safe_mode", False)
 
     def launch_game(self):
         # Get the list of clients that have the client.active_checkbox checked

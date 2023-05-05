@@ -12,6 +12,7 @@ class AutomationManager:
     def __init__(self):
         self.stop = False
         self.ship = "Brigantine"
+        self.safe_mode = True
 
     def window_enumeration_handler(self, hwnd, top_windows):
         """
@@ -49,6 +50,12 @@ class AutomationManager:
         self.ship = ship_type
         await sio.emit("update_status", data=f"Ship set to {self.ship}")
 
+    async def set_safe_mode(self, safe_mode):
+        """
+        Function that sets the safe mode
+        """
+        self.safe_mode = safe_mode
+
     async def launch_game(self, sio, leave):
         """
         Function that launches the game and gets the client to the set sail screen
@@ -67,20 +74,17 @@ class AutomationManager:
         time.sleep(0.2)
         keyboard.press_and_release("enter")
         await sio.emit("update_status", data="Searching the seas")
-        while not pyautogui.locateOnScreen("img/loading.png", confidence=0.9):
-            await asyncio.sleep(0.5)
-            print("waiting for client to start loading button")
-            if self.stop:
-                return
         await asyncio.sleep(1.5)
-        while pyautogui.locateOnScreen("img/loading.png", confidence=0.9):
-            await asyncio.sleep(0.5)
-            print("waiting for client to stop loading")
-            if self.stop:
-                return
-        await asyncio.sleep(1.5)
-        my_heading = heading.get_heading()
-        walker.commute(my_heading)
+        if not self.safe_mode:
+            my_heading = 0
+            while not my_heading:
+                await asyncio.sleep(2.5)
+                print("waiting for valid heading")
+                if self.stop:
+                    return
+                my_heading = heading.get_heading()
+            asyncio.sleep(10)
+            await walker.commute(my_heading)
 
     async def reset(self, sio, leave, portspiking):
         if portspiking:
