@@ -83,23 +83,7 @@ class SpikingServer:
 
         @self.sio.event
         async def change_ship(sid, data):
-            print(f"{data['name']} changed to {data['ship_type']}")
-
-            client_names = [self.clients[client].name for client in self.clients]
-            client_sids = [client for client in self.clients]
-
-            # match the client names to the client sids like "name": "main2", "sid": "123456789"
-            client_data = [
-                {"name": name, "sid": sid}
-                for name, sid in zip(client_names, client_sids)
-            ]
-
-            for client in client_data:
-                if client["name"] == data["name"]:
-                    data["sid"] = client["sid"]
-
-            # send the change to the client specified in data
-            await self.sio.emit("client_ship", data=data["ship_type"], room=data["sid"])
+            await self.sio.emit("client_ship", data=data)
 
         @self.sio.event
         async def client_event(sid, data):

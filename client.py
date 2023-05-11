@@ -75,7 +75,8 @@ async def main():
 
     @sio.event()
     async def client_ship(data):
-        await sota.set_ship(sio, data)
+        if config_file["name"] in data["client"]:
+            await sota.set_ship(sio, data["ship_type"])
 
     @sio.event()
     async def launch_game(data):

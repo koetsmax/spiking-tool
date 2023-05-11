@@ -6,6 +6,10 @@ import traceback
 
 
 class Client:
+    """
+    Class to store information about a client
+    """
+
     def __init__(self, name):
         self.name = name
         self.ship_type = "Brigantine"
@@ -19,28 +23,45 @@ class Client:
 
 
 class ClientManager:
+    """
+    Class to manage all of the clients
+    """
+
     def __init__(self):
         self.clients = {}
 
     def add_client(self, name):
+        """
+        Add a client to the list of clients
+        """
         client = Client(name)
         self.clients[name] = client
 
     def get_active_clients(self):
+        """
+        Get a list of all of the active clients (clients with the active checkbox checked)
+        """
         return [client for client in self.clients if self.clients[client].active.get()]
 
     def get_client(self, name):
+        """
+        Get a client by name
+        """
         return self.clients.get(name)
 
     def set_client_status(self, name, status):
+        """
+        Set the status of a client
+        """
         client = self.get_client(name)
+        # if the status is an int, set the last 3 numbers of the port to the status
         if isinstance(status, int):
             status = int(str(status)[2:])
-            # if the status is less than 3 characters long. add 0's in front of it untiul it is 3 characters long
+            # if the status is less than 3 characters long. add 0's in front of it until it is 3 characters long
             if len(str(status)) < 3:
                 status = "0" * (3 - len(str(status))) + str(status)
             client.port = status
-            # check if the status contains "outpost=" and remove it
+        # check if the status contains "outpost=" and remove it
         if "outpost=" in str(status):
             location = str(status).replace("outpost=", "")
             status = f"{client.port} -- {location}"
@@ -51,8 +72,10 @@ class ClientManager:
             client.status_label.configure(text=status)
 
     def remove_client(self, name):
-        # delete all of the gui elements associated with the client and remove it from the list
-        print(f"Removing client {name}")
+        """
+        Delete all of the gui elements associated with the client and remove it from the list
+        """
+
         if name in self.clients:
             client = self.get_client(name)
             client.active_checkbox.destroy()
@@ -63,10 +86,13 @@ class ClientManager:
             print(f"Client {name} removed")
 
     def update_biggest_match(self, label):
-        # dictionary to count the frequency of each status
+        """
+        Update the biggest match label
+        """
+        # dictionary to count the frequency of each port
         port_counts = {}
 
-        # iterate over all clients and update the status counts
+        # iterate over all clients and update the port counts
         for client_name, client in self.clients.items():
             if client.port is not None:
                 port_counts[client.port] = port_counts.get(client.port, []) + [
@@ -91,55 +117,56 @@ class ClientManager:
 
 
 class Controller:
+    """
+    Class to manage the controller gui
+    """
+
     def __init__(self, root, sio=None):
-        self.root = root
         self.sio = sio or ThreadedSocketClient(
             url="http://spiker.famkoets.nl", auth="Controller"
         )
-        self.root.title("Controller script")
-        self.root.option_add("*tearOff", FALSE)
-        self.mainframe = tk.Frame(self.root, padding="3 3 12 12")
-        self.mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
-        self.root.columnconfigure(0, weight=1)
-        self.root.columnconfigure(1, weight=1)
-        self.root.columnconfigure(99, weight=1)
-        self.root.rowconfigure(0, weight=1)
+        root.title("Controller script")
+        root.option_add("*tearOff", FALSE)
+        mainframe = tk.Frame(root, padding="3 3 12 12")
+        mainframe.grid(column=0, row=0, sticky=(N, W, E, S))
+        root.columnconfigure(0, weight=1)
+        root.columnconfigure(1, weight=1)
+        root.columnconfigure(99, weight=1)
+        root.rowconfigure(0, weight=1)
         self.client_manager = ClientManager()
 
         self._change_region = StringVar(value="US East (NY/NJ)")
-        self.region_combo_box = tk.Combobox(
-            self.mainframe, textvariable=self._change_region
-        )
-        self.region_combo_box.grid(column=2, row=1, sticky=(W, E))
-        self.region_combo_box["values"] = Region.getRegions()
+        region_combo_box = tk.Combobox(mainframe, textvariable=self._change_region)
+        region_combo_box.grid(column=2, row=1, sticky=(W, E))
+        region_combo_box["values"] = Region.getRegions()
 
         # Bind the ComboboxSelected event to the change_region function
-        self.region_combo_box.bind("<<ComboboxSelected>>", self.change_region)
+        region_combo_box.bind("<<ComboboxSelected>>", self.change_region)
 
         self._set_port_spike = BooleanVar(value=False)
-        self.portspike_checkbox = tk.Checkbutton(
-            self.mainframe,
+        portspike_checkbox = tk.Checkbutton(
+            mainframe,
             variable=self._set_port_spike,
             text="Port spike",
             onvalue=1,
             offvalue=0,
             command=self.set_port_spike,
         )
-        self.portspike_checkbox.grid(column=2, row=2, sticky=(W, E))
+        portspike_checkbox.grid(column=2, row=2, sticky=(W, E))
 
         self._set_safe_mode = BooleanVar(value=True)
-        self.safe_mode_checkbox = tk.Checkbutton(
-            self.mainframe,
+        safe_mode_checkbox = tk.Checkbutton(
+            mainframe,
             variable=self._set_safe_mode,
             text="Safe mode",
             onvalue=1,
             offvalue=0,
             command=self.set_safe_mode,
         )
-        self.safe_mode_checkbox.grid(column=2, row=3, sticky=(W, E))
+        safe_mode_checkbox.grid(column=2, row=3, sticky=(W, E))
 
         # Create a new frcame for the list of clients
-        self.client_list_frame = tk.Frame(self.mainframe, padding="5 5 5 5")
+        self.client_list_frame = tk.Frame(mainframe, padding="5 5 5 5")
         self.client_list_frame.grid(columnspan=4, row=6, sticky=(W, E))
         self.client_list_frame.columnconfigure(0, weight=1)
         self.client_list_frame.columnconfigure(1, weight=1)
@@ -159,46 +186,46 @@ class Controller:
             column=3, row=0, sticky=(W, E)
         )
 
-        self.biggest_match_label = tk.Label(self.mainframe, text="No matches found")
+        self.biggest_match_label = tk.Label(mainframe, text="No matches found")
         self.biggest_match_label.grid(columnspan=4, row=99, sticky=(W, E))
 
-        self.launch_game_buton = tk.Button(
-            self.mainframe,
+        launch_game_buton = tk.Button(
+            mainframe,
             text="launch game",
             command=lambda: self.emit_client_event("launch_game"),
         )
-        self.launch_game_buton.grid(columnspan=4, row=100, sticky=(W, E))
+        launch_game_buton.grid(columnspan=4, row=100, sticky=(W, E))
 
-        self.sail_button = tk.Button(
-            self.mainframe, text="sail", command=lambda: self.emit_client_event("sail")
+        sail_button = tk.Button(
+            mainframe, text="sail", command=lambda: self.emit_client_event("sail")
         )
-        self.sail_button.grid(columnspan=4, row=101, sticky=(W, E))
+        sail_button.grid(columnspan=4, row=101, sticky=(W, E))
 
-        self.reset_button = tk.Button(
-            self.mainframe,
+        reset_button = tk.Button(
+            mainframe,
             text="reset",
             command=lambda: self.emit_client_event("reset"),
         )
-        self.reset_button.grid(columnspan=4, row=102, sticky=(W, E))
+        reset_button.grid(columnspan=4, row=102, sticky=(W, E))
 
-        self.kill_game_button = tk.Button(
-            self.mainframe,
+        kill_game_button = tk.Button(
+            mainframe,
             text="kill game",
             command=lambda: self.emit_client_event("kill_game"),
         )
-        self.kill_game_button.grid(columnspan=4, row=103, sticky=(W, E))
+        kill_game_button.grid(columnspan=4, row=103, sticky=(W, E))
 
-        self.stop_functions_button = tk.Button(
-            self.mainframe,
+        stop_functions_button = tk.Button(
+            mainframe,
             text="stop running functions",
             command=lambda: self.emit_client_event("stop_functions"),
         )
-        self.stop_functions_button.grid(columnspan=4, row=104, sticky=(W, E))
+        stop_functions_button.grid(columnspan=4, row=104, sticky=(W, E))
 
-        for child in self.mainframe.winfo_children():
+        for child in mainframe.winfo_children():
             child.grid_configure(padx=5, pady=5)
 
-        self.root.eval(f"tk::PlaceWindow {root} center")
+        root.eval(f"tk::PlaceWindow {root} center")
 
         @self.sio.event()
         def region(data):
@@ -265,14 +292,11 @@ class Controller:
 
                     # Set up a callback to update the client's ship type when the user changes the ship_listbox
                     def ship_type_changed(event, client=client):
-                        print(
-                            f"Changing ship type to {client.ship_type_var.get()} for {client.name}"
-                        )
                         client.ship_type = client.ship_type_var.get()
                         self.sio.emit(
                             "change_ship",
                             data={
-                                "name": client.name,
+                                "client": client.name,
                                 "ship_type": client.ship_type_var.get(),
                             },
                         )
@@ -304,15 +328,28 @@ class Controller:
             self.client_manager.update_biggest_match(self.biggest_match_label)
 
     def change_region(self, *args):
+        """
+        Change the region of all clients to the region selected in the dropdown menu
+        """
+
         self.sio.emit("region", self._change_region.get())
 
     def set_port_spike(self):
+        """
+        Set the portspiking value of all clients to the value selected in the dropdown menu
+        """
         self.sio.emit("portspiking", self._set_port_spike.get())
 
     def set_safe_mode(self):
+        """
+        Set the safe mode value of all clients to the value selected in the dropdown menu
+        """
         self.sio.emit("safe_mode", self._set_safe_mode.get())
 
     def emit_client_event(self, event):
+        """
+        Emit an event to all clients
+        """
         active_clients = self.client_manager.get_active_clients()
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
 
