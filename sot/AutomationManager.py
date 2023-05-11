@@ -1,5 +1,4 @@
 import keyboard
-import time
 import win32gui
 
 import pyautogui
@@ -69,25 +68,27 @@ class AutomationManager:
         await asyncio.sleep(1.5)
         await self.reset(sio, leave, portspiking=False)
 
-    async def sail(self, sio):
+    async def sail(self, sio, portspike):
         self.activate_window("sea of thieves")
-        time.sleep(0.2)
+        await asyncio.sleep(0.2)
         keyboard.press_and_release("enter")
         await sio.emit("update_status", data="Searching the seas")
         await asyncio.sleep(1.5)
-        if not self.safe_mode:
+        if not self.safe_mode and not portspike:
             my_heading = 0
             while not my_heading:
-                await asyncio.sleep(2.5)
+                await asyncio.sleep(0.5)
                 print("waiting for valid heading")
                 if self.stop:
                     return
                 my_heading = heading.get_heading()
-            asyncio.sleep(10)
+            await sio.emit("update_status", data=f"outpost={my_heading}")
+            await asyncio.sleep(10)
             await walker.commute(my_heading)
 
     async def reset(self, sio, leave, portspiking):
         if portspiking:
+            await sio.emit("update_status", data="Awaiting connection")
             while not pyautogui.locateOnScreen(
                 "img/portspike_connected.png", confidence=0.9
             ):
@@ -97,6 +98,7 @@ class AutomationManager:
                     return
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
+            await sio.emit("update_status", data="Awaiting rejoin prompt")
             while not pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
                 await asyncio.sleep(0.5)
                 print("waiting for rejoin prompt")
@@ -140,8 +142,13 @@ class AutomationManager:
         while not pyautogui.locateOnScreen("img/play_screen.png", confidence=0.9):
             print("Waiting for play screen")
             await asyncio.sleep(0.5)
+            if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
+                await asyncio.sleep(0.5)
+                keyboard.press_and_release("esc")
+                print("Declined rejoin prompt")
             if self.stop:
                 return
+        await sio.emit("update_status", data="Selecting gamemode")
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("right")
@@ -176,6 +183,7 @@ class AutomationManager:
             keyboard.press_and_release("down")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
+        await sio.emit("update_status", data="Confirming crew")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
 
@@ -198,12 +206,12 @@ class AutomationManager:
         await asyncio.sleep(0.5)
         keyboard.press_and_release("alt+f4")
 
-    async def stop_everything(self, sio):
+    async def stop_functions(self, sio):
         """
         Function that stops all running functions
         """
-        await sio.emit("update_status", data="Stopping everything")
+        await sio.emit("update_status", data="Stopping functions")
         self.stop = True
-        await asyncio.sleep(5)
+        await asyncio.sleep(2.5)
         self.stop = False
-        await sio.emit("update_status", data="No longer stopping everything")
+        await sio.emit("update_status", data="No longer stopping functions")

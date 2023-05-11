@@ -85,7 +85,7 @@ async def main():
     @sio.event()
     async def sail(data):
         if config_file["name"] in data:
-            await sota.sail(sio)
+            await sota.sail(sio, sotc.portspike)
 
     @sio.event()
     async def reset(data):
@@ -99,9 +99,9 @@ async def main():
             await sota.kill_game(sio)
 
     @sio.event()
-    async def stop_everything(data):
+    async def stop_functions(data):
         if config_file["name"] in data:
-            await sota.stop_everything(sio)
+            await sota.stop_functions(sio)
 
     async def on_join(ip, port):
         try:

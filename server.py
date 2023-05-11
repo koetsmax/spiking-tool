@@ -51,10 +51,8 @@ class SpikingServer:
 
         @self.sio.event
         async def join(sid, data):
-            # current time as 13:37 (24h)
-            jtime = time.strftime("%H:%M", time.localtime())
             print(
-                f"[{jtime}] Join from {self.clients[sid].name if sid in self.clients else sid}: {data['ip']}:{data['port']}"
+                f"Join from {self.clients[sid].name if sid in self.clients else sid}: {data['ip']}:{data['port']}"
             )
             client = self.clients[sid].name if sid in self.clients else sid
             await self.sio.emit(
@@ -104,24 +102,9 @@ class SpikingServer:
             await self.sio.emit("client_ship", data=data["ship_type"], room=data["sid"])
 
         @self.sio.event
-        async def launch_game(sid, data):
-            await self.sio.emit("launch_game", data=data)
-
-        @self.sio.event
-        async def sail(sid, data):
-            await self.sio.emit("sail", data=data)
-
-        @self.sio.event
-        async def reset(sid, data):
-            await self.sio.emit("reset", data=data)
-
-        @self.sio.event
-        async def kill_game(sid, data):
-            await self.sio.emit("kill_game", data=data)
-
-        @self.sio.event
-        async def stop_everything(sid, data):
-            await self.sio.emit("stop_everything", data=data)
+        async def client_event(sid, data):
+            print(f"Client event: {data}")
+            await self.sio.emit(data["event"], data=data["clients"])
 
         @self.sio.event
         async def update_status(sid, data):

@@ -15,6 +15,7 @@ class Client:
         self.name_label = None
         self.ship_listbox = None
         self.status_label = None
+        self.port = None
 
 
 class ClientManager:
@@ -32,13 +33,18 @@ class ClientManager:
         return self.clients.get(name)
 
     def set_client_status(self, name, status):
+        client = self.get_client(name)
         if isinstance(status, int):
             status = int(str(status)[2:])
             # if the status is less than 3 characters long. add 0's in front of it untiul it is 3 characters long
             if len(str(status)) < 3:
                 status = "0" * (3 - len(str(status))) + str(status)
+            client.port = status
+            # check if the status contains "outpost=" and remove it
+        if "outpost=" in str(status):
+            location = str(status).replace("outpost=", "")
+            status = f"{client.port} -- {location}"
 
-        client = self.get_client(name)
         if client:
             client.status = status
             print(f"Client {name} status set to {status}")
@@ -58,33 +64,30 @@ class ClientManager:
 
     def update_biggest_match(self, label):
         # dictionary to count the frequency of each status
-        status_counts = {}
+        port_counts = {}
 
         # iterate over all clients and update the status counts
         for client_name, client in self.clients.items():
-            # check if the length is 3 characters long
-            if len(str(client.status)) == 3:
-                status_counts[client.status] = status_counts.get(client.status, []) + [
+            if client.port is not None:
+                port_counts[client.port] = port_counts.get(client.port, []) + [
                     client_name
                 ]
 
-        # find the status with the most matches
+        # find the port with the most matches
         biggest_match = None
-        for status, clients in status_counts.items():
-            if biggest_match is None or len(clients) > len(
-                status_counts[biggest_match]
-            ):
-                biggest_match = status
+        for port, clients in port_counts.items():
+            if biggest_match is None or len(clients) > len(port_counts[biggest_match]):
+                biggest_match = port
 
         # format the output string
         if biggest_match:
-            matching_clients = ", ".join(status_counts[biggest_match])
-            num_matching_clients = len(status_counts[biggest_match])
+            matching_clients = ", ".join(port_counts[biggest_match])
+            num_matching_clients = len(port_counts[biggest_match])
             label.configure(
                 text=f"Biggest match is {num_matching_clients} with port: {biggest_match} and client(s): {matching_clients}"
             )
         else:
-            label.configure(text="No matching status found")
+            label.configure(text="No matches found")
 
 
 class Controller:
@@ -156,29 +159,41 @@ class Controller:
             column=3, row=0, sticky=(W, E)
         )
 
-        self.biggest_match_label = tk.Label(self.mainframe, text="Biggest match: N/A")
+        self.biggest_match_label = tk.Label(self.mainframe, text="No matches found")
         self.biggest_match_label.grid(columnspan=4, row=99, sticky=(W, E))
 
         self.launch_game_buton = tk.Button(
-            self.mainframe, text="launch game", command=self.launch_game
+            self.mainframe,
+            text="launch game",
+            command=lambda: self.emit_client_event("launch_game"),
         )
         self.launch_game_buton.grid(columnspan=4, row=100, sticky=(W, E))
 
-        self.sail_button = tk.Button(self.mainframe, text="sail", command=self.sail)
+        self.sail_button = tk.Button(
+            self.mainframe, text="sail", command=lambda: self.emit_client_event("sail")
+        )
         self.sail_button.grid(columnspan=4, row=101, sticky=(W, E))
 
-        self.reset_button = tk.Button(self.mainframe, text="reset", command=self.reset)
+        self.reset_button = tk.Button(
+            self.mainframe,
+            text="reset",
+            command=lambda: self.emit_client_event("reset"),
+        )
         self.reset_button.grid(columnspan=4, row=102, sticky=(W, E))
 
         self.kill_game_button = tk.Button(
-            self.mainframe, text="kill game", command=self.kill_game
+            self.mainframe,
+            text="kill game",
+            command=lambda: self.emit_client_event("kill_game"),
         )
         self.kill_game_button.grid(columnspan=4, row=103, sticky=(W, E))
 
-        self.stop_everything_button = tk.Button(
-            self.mainframe, text="stop everything", command=self.stop_everything
+        self.stop_functions_button = tk.Button(
+            self.mainframe,
+            text="stop running functions",
+            command=lambda: self.emit_client_event("stop_functions"),
         )
-        self.stop_everything_button.grid(columnspan=4, row=104, sticky=(W, E))
+        self.stop_functions_button.grid(columnspan=4, row=104, sticky=(W, E))
 
         for child in self.mainframe.winfo_children():
             child.grid_configure(padx=5, pady=5)
@@ -197,6 +212,7 @@ class Controller:
         def client_connect(data):
             self.change_region()
             self.set_port_spike()
+            self.set_safe_mode()
             for client in data:
                 if client != "Controller" and client not in self.client_manager.clients:
                     self.client_manager.add_client(client)
@@ -302,26 +318,9 @@ class Controller:
         else:
             self.sio.emit("safe_mode", False)
 
-    def launch_game(self):
-        # Get the list of clients that have the client.active_checkbox checked
+    def emit_client_event(self, event):
         active_clients = self.client_manager.get_active_clients()
-        self.sio.emit("launch_game", data=active_clients)
-
-    def sail(self):
-        active_clients = self.client_manager.get_active_clients()
-        self.sio.emit("sail", data=active_clients)
-
-    def reset(self):
-        active_clients = self.client_manager.get_active_clients()
-        self.sio.emit("reset", data=active_clients)
-
-    def kill_game(self):
-        active_clients = self.client_manager.get_active_clients()
-        self.sio.emit("kill_game", data=active_clients)
-
-    def stop_everything(self):
-        active_clients = self.client_manager.get_active_clients()
-        self.sio.emit("stop_everything", data=active_clients)
+        self.sio.emit("client_event", {"event": event, "clients": active_clients})
 
 
 # Start the SocketIO client
