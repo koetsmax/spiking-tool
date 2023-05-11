@@ -47,8 +47,7 @@ class ConnectionManager:
             self.reader = geolite2.reader()
             self.reader_lock = threading.Lock()
 
-            self._delayedSendTask = asyncio.create_task(
-                self._delayedPackageSender())
+            self._delayedSendTask = asyncio.create_task(self._delayedPackageSender())
             self.divertThread = threading.Thread(target=self._divert_SoT)
 
             self.divertThread.start()

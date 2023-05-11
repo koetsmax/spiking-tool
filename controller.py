@@ -114,6 +114,13 @@ class ClientManager:
         else:
             label.configure(text="No matches found")
 
+    def reset_clients(self):
+        """
+        Reset all of the client ports
+        """
+        for client_name, client in self.clients.items():
+            client.port = None
+
 
 class Controller:
     """
@@ -351,6 +358,8 @@ class Controller:
         """
         active_clients = self.client_manager.get_active_clients()
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
+        if event == "reset":
+            self.client_manager.reset_clients()
 
 
 # Start the SocketIO client
