@@ -68,7 +68,6 @@ class ClientManager:
 
         if client:
             client.status = status
-            print(f"Client {name} status set to {status}")
             client.status_label.configure(text=status)
 
     def remove_client(self, name):

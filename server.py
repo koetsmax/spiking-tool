@@ -65,18 +65,15 @@ class SpikingServer:
 
         @self.sio.event
         async def region(sid, data):
-            print(f"region change: {data}")
             self.region = Region.fromName(data)
             await self.sio.emit("region", self.region.name)
 
         @self.sio.event
         async def portspiking(sid, data):
-            print(f"Portspike set to {data}")
             await self.sio.emit("portspiking", data)
 
         @self.sio.event
         async def safe_mode(sid, data):
-            print(f"Safe mode set to {data}")
             await self.sio.emit("safe_mode", data)
 
         @self.sio.event
@@ -85,7 +82,6 @@ class SpikingServer:
 
         @self.sio.event
         async def client_event(sid, data):
-            print(f"Client event: {data}")
             await self.sio.emit(data["event"], data=data["clients"])
 
         @self.sio.event

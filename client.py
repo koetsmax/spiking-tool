@@ -56,10 +56,6 @@ async def main():
     config = get_config()
 
     @sio.event()
-    async def connect():
-        print("Connected to server")
-
-    @sio.event()
     async def region(data):
         sotc.region = sot.Region.fromName(data)
         print(f"Region set to {sotc.region.name}")
@@ -106,13 +102,7 @@ async def main():
 
     async def on_join(ip, port):
         try:
-            if sio.connected:
-                await sio.emit("join", {"ip": ip, "port": port})
-                print(
-                    f"Join in {sotc.getServerInfo(ip)} detected and emitted: : {ip}:{port}"
-                )
-            else:
-                print(f"Join detected in {sotc.getServerInfo(ip)}: {ip}:{port}")
+            await sio.emit("join", {"ip": ip, "port": port})
         except:
             traceback.print_exc()
 
@@ -128,7 +118,6 @@ async def main():
             pass
         except:
             traceback.print_exc()
-            input()
 
 
 if __name__ == "__main__":
@@ -137,7 +126,6 @@ if __name__ == "__main__":
             asyncio.run(main())
         except:  # pylint: disable=bare-except
             traceback.print_exc()
-            input()
     else:
         ctypes.windll.shell32.ShellExecuteW(
             None, "runas", sys.executable, " ".join(sys.argv), None, 1
