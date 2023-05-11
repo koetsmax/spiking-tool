@@ -1,5 +1,3 @@
-import time
-
 import socketio
 import uvicorn
 
@@ -104,6 +102,5 @@ class SpikingServer:
 
 
 if __name__ == "__main__":
-    print(time.strftime("%H:%M", time.localtime()))
     server = SpikingServer()
     server.run()
