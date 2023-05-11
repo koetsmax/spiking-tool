@@ -307,16 +307,10 @@ class Controller:
         self.sio.emit("region", self._change_region.get())
 
     def set_port_spike(self):
-        if "selected" in self.portspike_checkbox.state():
-            self.sio.emit("portspiking", True)
-        else:
-            self.sio.emit("portspiking", False)
+        self.sio.emit("portspiking", self._set_port_spike.get())
 
     def set_safe_mode(self):
-        if "selected" in self.safe_mode_checkbox.state():
-            self.sio.emit("safe_mode", True)
-        else:
-            self.sio.emit("safe_mode", False)
+        self.sio.emit("safe_mode", self._set_safe_mode.get())
 
     def emit_client_event(self, event):
         active_clients = self.client_manager.get_active_clients()
