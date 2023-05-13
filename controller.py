@@ -13,7 +13,7 @@ class Client:
     def __init__(self, name):
         self.name = name
         self.ship_type = "Brigantine"
-        self.status = "Offline"
+        self.status = "Unknown"
         self.active = None
         self.active_checkbox = None
         self.name_label = None
@@ -140,6 +140,8 @@ class Controller:
         root.columnconfigure(99, weight=1)
         root.rowconfigure(0, weight=1)
         self.client_manager = ClientManager()
+        self.desired_port_mode = False
+        self.desired_port = None
 
         self._change_region = StringVar(value="US East (NY/NJ)")
         region_combo_box = tk.Combobox(mainframe, textvariable=self._change_region)
@@ -171,7 +173,25 @@ class Controller:
         )
         safe_mode_checkbox.grid(column=2, row=3, sticky=(W, E))
 
-        # Create a new frcame for the list of clients
+        self._set_desired_port_mode = BooleanVar(value=False)
+        desired_port_mode_checkbox = tk.Checkbutton(
+            mainframe,
+            variable=self._set_desired_port_mode,
+            text="Desired port mode",
+            onvalue=1,
+            offvalue=0,
+            command=self.set_desired_port_mode,
+        )
+        desired_port_mode_checkbox.grid(column=2, row=4, sticky=(W, E))
+
+        self._desired_port = StringVar(value="")
+        desired_port_entry = tk.Entry(
+            mainframe, width=7, textvariable=self._desired_port
+        )
+        desired_port_entry.grid(column=2, row=5, sticky=(W, E))
+        desired_port_entry.bind("<Return>", self.set_desired_port)
+
+        # Create a new frame for the list of clients
         self.client_list_frame = tk.Frame(mainframe, padding="5 5 5 5")
         self.client_list_frame.grid(columnspan=4, row=6, sticky=(W, E))
         self.client_list_frame.columnconfigure(0, weight=1)
@@ -246,6 +266,7 @@ class Controller:
             self.change_region()
             self.set_port_spike()
             self.set_safe_mode()
+            self.set_desired_port_mode()
             for client in data:
                 if client != "Controller" and client not in self.client_manager.clients:
                     self.client_manager.add_client(client)
@@ -332,12 +353,24 @@ class Controller:
         def update_status(data):
             self.client_manager.set_client_status(data["client"], data["status"])
             self.client_manager.update_biggest_match(self.biggest_match_label)
+            if self.desired_port_mode and not self.desired_port is None:
+                client = self.client_manager.get_client(data["client"])
+                if isinstance(data["status"], int):
+                    status = int(str(data["status"])[2:])
+                    # if the status is less than 3 characters long. add 0's in front of it until it is 3 characters long
+                    if len(str(status)) < 3:
+                        status = "0" * (3 - len(str(status))) + str(status)
+                    print(status)
+                    if status != self.desired_port.strip():
+                        self.emit_client_event("reset", client.name)
+
+                elif data["status"] == "Ready":
+                    self.emit_client_event("sail", client.name)
 
     def change_region(self, *args):
         """
         Change the region of all clients to the region selected in the dropdown menu
         """
-
         self.sio.emit("region", self._change_region.get())
 
     def set_port_spike(self):
@@ -352,11 +385,28 @@ class Controller:
         """
         self.sio.emit("safe_mode", self._set_safe_mode.get())
 
-    def emit_client_event(self, event):
+    def set_desired_port_mode(self):
+        """
+        Set the desired port mode of all clients to the value entered in the entry
+        """
+        self.desired_port_mode = True
+        print(f"Desired port mode set to {self._set_desired_port_mode.get()}")
+
+    def set_desired_port(self, *args):
+        """
+        Set the desired port of all clients to the value entered in the entry
+        """
+        self.desired_port = self._desired_port.get()
+        print(f"Desired port set to {self.desired_port}")
+
+    def emit_client_event(self, event, *args):
         """
         Emit an event to all clients
         """
-        active_clients = self.client_manager.get_active_clients()
+        if not args:
+            active_clients = self.client_manager.get_active_clients()
+        else:
+            active_clients = args
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
             self.client_manager.reset_clients()
