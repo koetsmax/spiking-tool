@@ -3,6 +3,7 @@ from tkinter import ttk as tk
 from sot import Region
 from threadedsio import ThreadedSocketClient
 import traceback
+import asyncio
 
 
 class Client:
@@ -29,6 +30,7 @@ class ClientManager:
 
     def __init__(self):
         self.clients = {}
+        self.biggest_match = None
 
     def add_client(self, name):
         """
@@ -111,6 +113,7 @@ class ClientManager:
             label.configure(
                 text=f"Biggest match is {num_matching_clients} with port: {biggest_match} and client(s): {matching_clients}"
             )
+            self.biggest_match = num_matching_clients
         else:
             label.configure(text="No matches found")
 
@@ -120,6 +123,12 @@ class ClientManager:
         """
         for client_name, client in self.clients.items():
             client.port = None
+
+    def get_biggest_match(self):
+        """
+        Get the biggest match
+        """
+        return self.biggest_match
 
 
 class Controller:
@@ -142,6 +151,8 @@ class Controller:
         self.client_manager = ClientManager()
         self.desired_port_mode = False
         self.desired_port = None
+        self.auto_spike_mode = False
+        self.number_of_ships = None
 
         self._change_region = StringVar(value="US East (NY/NJ)")
         region_combo_box = tk.Combobox(mainframe, textvariable=self._change_region)
@@ -191,9 +202,27 @@ class Controller:
         desired_port_entry.grid(column=2, row=5, sticky=(W, E))
         desired_port_entry.bind("<Return>", self.set_desired_port)
 
+        self._set_auto_spike_mode = BooleanVar(value=False)
+        auto_spike_mode_checkbox = tk.Checkbutton(
+            mainframe,
+            variable=self._set_auto_spike_mode,
+            text="Auto spike mode",
+            onvalue=1,
+            offvalue=0,
+            command=self.set_auto_spike_mode,
+        )
+        auto_spike_mode_checkbox.grid(column=2, row=6, sticky=(W, E))
+
+        self._number_of_ships = StringVar(value="")
+        number_of_ships = tk.Entry(
+            mainframe, width=7, textvariable=self._number_of_ships
+        )
+        number_of_ships.grid(column=2, row=7, sticky=(W, E))
+        number_of_ships.bind("<Return>", self.set_number_of_ships)
+
         # Create a new frame for the list of clients
         self.client_list_frame = tk.Frame(mainframe, padding="5 5 5 5")
-        self.client_list_frame.grid(columnspan=4, row=6, sticky=(W, E))
+        self.client_list_frame.grid(columnspan=4, row=8, sticky=(W, E))
         self.client_list_frame.columnconfigure(0, weight=1)
         self.client_list_frame.columnconfigure(1, weight=1)
         self.client_list_frame.columnconfigure(2, weight=1)
@@ -267,6 +296,7 @@ class Controller:
             self.set_port_spike()
             self.set_safe_mode()
             self.set_desired_port_mode()
+            self.set_auto_spike_mode()
             for client in data:
                 if client != "Controller" and client not in self.client_manager.clients:
                     self.client_manager.add_client(client)
@@ -366,6 +396,26 @@ class Controller:
 
                 elif data["status"] == "Ready":
                     self.emit_client_event("sail", client.name)
+            elif self.auto_spike_mode and not self.number_of_ships is None:
+                total_clients = len(self.client_manager.clients)
+                print(total_clients)
+                # for every client check if the client.port is not None and get the biggest match. check if it is still possible to get the self.number_of_ships using total_clients, biggest_match and the self.number_of_ships
+                for client in self.client_manager.clients:
+                    if self.client_manager.get_client(client).port is None:
+                        print("client.port is None")
+                        return
+                biggest_match = self.client_manager.get_biggest_match()
+                print(total_clients - biggest_match >= self.number_of_ships)
+                if biggest_match is None:
+                    print("biggest_match is None")
+                    return
+                if total_clients - biggest_match < self.number_of_ships:
+                    print(total_clients - biggest_match < self.number_of_ships)
+                    return
+                # if it is possible to get the self.number_of_ships using total_clients, reset all the clients
+
+                if total_clients - biggest_match >= self.number_of_ships:
+                    self.emit_client_event("reset")
 
     def change_region(self, *args):
         """
@@ -389,7 +439,7 @@ class Controller:
         """
         Set the desired port mode of all clients to the value entered in the entry
         """
-        self.desired_port_mode = True
+        self.desired_port_mode = self._set_desired_port_mode.get()
         print(f"Desired port mode set to {self._set_desired_port_mode.get()}")
 
     def set_desired_port(self, *args):
@@ -398,6 +448,20 @@ class Controller:
         """
         self.desired_port = self._desired_port.get()
         print(f"Desired port set to {self.desired_port}")
+
+    def set_auto_spike_mode(self):
+        """
+        Set the auto spike mode of all clients to the value entered in the entry
+        """
+        self.auto_spike_mode = self._set_auto_spike_mode.get()
+        print(f"Auto spike mode set to {self._set_auto_spike_mode.get()}")
+
+    def set_number_of_ships(self, *args):
+        """
+        Set the number of ships of all clients to the value entered in the entry
+        """
+        self.number_of_ships = self._number_of_ships.get()
+        print(f"Number of ships set to {self.number_of_ships}")
 
     def emit_client_event(self, event, *args):
         """

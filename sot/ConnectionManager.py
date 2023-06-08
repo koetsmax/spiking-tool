@@ -4,8 +4,6 @@ import traceback
 import queue
 from time import sleep, monotonic_ns
 from geolite2 import geolite2
-import ctypes
-import sys
 import threading
 
 from events import EventManager
@@ -24,16 +22,8 @@ class ConnectionManager:
 
     def __init__(self, region="US East (NY/NJ)"):
         try:
-            if region.lower() == "prompt":
-                while True:
-                    try:
-                        self.region = Region.prompt_region()
-                    except:
-                        pass
-                    else:
-                        break
-            else:
-                self.region = Region.fromName(region)
+            self.region = Region.fromName(region)
+            print("Region:", self.region.name)
             self.packetQueue = queue.Queue()
             self.events = EventManager(events=["join"])
             self.disconnect = False
@@ -83,6 +73,7 @@ class ConnectionManager:
         )
         self._winDivert.open()
         self.timeout = 0
+        print("Listening for SoT packets...")
 
         while True:
             try:
@@ -105,6 +96,7 @@ class ConnectionManager:
                                 not "city" in match
                                 or match["city"]["names"]["en"] != self.region.city
                             ):
+                                print(f"not prefered: {match['city']['names']['en']}")
                                 self._delayedSend(packet, 0.5)
                                 continue
                     else:
