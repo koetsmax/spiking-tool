@@ -1,6 +1,6 @@
 from tkinter import *
 from tkinter import ttk as tk
-from sot import Region
+from sot.Region import Region, core_regions
 from threadedsio import ThreadedSocketClient
 import traceback
 import asyncio
@@ -96,9 +96,7 @@ class ClientManager:
         # iterate over all clients and update the port counts
         for client_name, client in self.clients.items():
             if client.port is not None:
-                port_counts[client.port] = port_counts.get(client.port, []) + [
-                    client_name
-                ]
+                port_counts[client.port] = port_counts.get(client.port, []) + [client_name]
 
         # find the port with the most matches
         biggest_match = None
@@ -110,9 +108,7 @@ class ClientManager:
         if biggest_match:
             matching_clients = ", ".join(port_counts[biggest_match])
             num_matching_clients = len(port_counts[biggest_match])
-            label.configure(
-                text=f"Biggest match is {num_matching_clients} with port: {biggest_match} and client(s): {matching_clients}"
-            )
+            label.configure(text=f"Biggest match is {num_matching_clients} with port: {biggest_match} and client(s): {matching_clients}")
             self.biggest_match = num_matching_clients
         else:
             label.configure(text="No matches found")
@@ -137,9 +133,7 @@ class Controller:
     """
 
     def __init__(self, root, sio=None):
-        self.sio = sio or ThreadedSocketClient(
-            url="http://spiker.famkoets.nl", auth="Controller"
-        )
+        self.sio = sio or ThreadedSocketClient(url="http://spiker.famkoets.nl", auth="Controller")
         root.title("Controller script")
         root.option_add("*tearOff", FALSE)
         mainframe = tk.Frame(root, padding="3 3 12 12")
@@ -154,10 +148,12 @@ class Controller:
         self.auto_spike_mode = False
         self.number_of_ships = None
 
-        self._change_region = StringVar(value="US East (NY/NJ)")
+        self._change_region = StringVar(value="US East - NY/NJ")
         region_combo_box = tk.Combobox(mainframe, textvariable=self._change_region)
         region_combo_box.grid(column=2, row=1, sticky=(W, E))
-        region_combo_box["values"] = Region.getRegions()
+        regions = list(core_regions.keys())
+        print(regions)
+        region_combo_box["values"] = regions
 
         # Bind the ComboboxSelected event to the change_region function
         region_combo_box.bind("<<ComboboxSelected>>", self.change_region)
@@ -196,9 +192,7 @@ class Controller:
         desired_port_mode_checkbox.grid(column=2, row=4, sticky=(W, E))
 
         self._desired_port = StringVar(value="")
-        desired_port_entry = tk.Entry(
-            mainframe, width=7, textvariable=self._desired_port
-        )
+        desired_port_entry = tk.Entry(mainframe, width=7, textvariable=self._desired_port)
         desired_port_entry.grid(column=2, row=5, sticky=(W, E))
         desired_port_entry.bind("<Return>", self.set_desired_port)
 
@@ -214,9 +208,7 @@ class Controller:
         auto_spike_mode_checkbox.grid(column=2, row=6, sticky=(W, E))
 
         self._number_of_ships = StringVar(value="")
-        number_of_ships = tk.Entry(
-            mainframe, width=7, textvariable=self._number_of_ships
-        )
+        number_of_ships = tk.Entry(mainframe, width=7, textvariable=self._number_of_ships)
         number_of_ships.grid(column=2, row=7, sticky=(W, E))
         number_of_ships.bind("<Return>", self.set_number_of_ships)
 
@@ -228,18 +220,10 @@ class Controller:
         self.client_list_frame.columnconfigure(2, weight=1)
         self.client_list_frame.columnconfigure(3, weight=1)
 
-        tk.Label(self.client_list_frame, text="Active").grid(
-            column=0, row=0, sticky=(E, W)
-        )
-        tk.Label(self.client_list_frame, text="Instance").grid(
-            column=1, row=0, sticky=(W, E)
-        )
-        tk.Label(self.client_list_frame, text="Ship type").grid(
-            column=2, row=0, sticky=(W, E)
-        )
-        tk.Label(self.client_list_frame, text="Status").grid(
-            column=3, row=0, sticky=(W, E)
-        )
+        tk.Label(self.client_list_frame, text="Active").grid(column=0, row=0, sticky=(E, W))
+        tk.Label(self.client_list_frame, text="Instance").grid(column=1, row=0, sticky=(W, E))
+        tk.Label(self.client_list_frame, text="Ship type").grid(column=2, row=0, sticky=(W, E))
+        tk.Label(self.client_list_frame, text="Status").grid(column=3, row=0, sticky=(W, E))
 
         self.biggest_match_label = tk.Label(mainframe, text="No matches found")
         self.biggest_match_label.grid(columnspan=4, row=99, sticky=(W, E))
@@ -251,9 +235,7 @@ class Controller:
         )
         launch_game_buton.grid(columnspan=4, row=100, sticky=(W, E))
 
-        sail_button = tk.Button(
-            mainframe, text="sail", command=lambda: self.emit_client_event("sail")
-        )
+        sail_button = tk.Button(mainframe, text="sail", command=lambda: self.emit_client_event("sail"))
         sail_button.grid(columnspan=4, row=101, sticky=(W, E))
 
         reset_button = tk.Button(

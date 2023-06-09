@@ -21,9 +21,7 @@ class SpikingServer:
         @self.sio.event
         async def connect(sid, environ, auth):
             try:
-                self.clients[sid] = SpikingServer.Client(
-                    sid, auth["name"], auth["type"]
-                )
+                self.clients[sid] = SpikingServer.Client(sid, auth["name"], auth["type"])
             except TypeError:
                 self.clients[sid] = SpikingServer.Client(sid, auth)
 
@@ -32,9 +30,7 @@ class SpikingServer:
             self.sio.enter_room(sid, self.clients[sid].type)
             client_names = [self.clients[client].name for client in self.clients]
             if self.controller:
-                await self.sio.emit(
-                    "client_connect", data=client_names, room=self.controller
-                )
+                await self.sio.emit("client_connect", data=client_names, room=self.controller)
 
         @self.sio.event()
         async def disconnect(sid):
@@ -43,15 +39,11 @@ class SpikingServer:
                 del self.clients[sid]
                 client_names = [self.clients[client].name for client in self.clients]
                 if self.controller:
-                    await self.sio.emit(
-                        "client_disconnect", data=client_names, room=self.controller
-                    )
+                    await self.sio.emit("client_disconnect", data=client_names, room=self.controller)
 
         @self.sio.event
         async def join(sid, data):
-            print(
-                f"Join from {self.clients[sid].name if sid in self.clients else sid}: {data['ip']}:{data['port']}"
-            )
+            print(f"Join from {self.clients[sid].name if sid in self.clients else sid}: {data['ip']}:{data['port']}")
             client = self.clients[sid].name if sid in self.clients else sid
             await self.sio.emit(
                 "update_status",
@@ -65,8 +57,7 @@ class SpikingServer:
 
         @self.sio.event
         async def region(sid, data):
-            self.region = Region.fromName(data)
-            await self.sio.emit("region", self.region.name)
+            await self.sio.emit("region", data)
 
         @self.sio.event
         async def portspiking(sid, data):

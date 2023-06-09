@@ -38,9 +38,7 @@ def get_config():
         try:
             config_file[key]
         except tomlkit.exceptions.NonExistentKey:
-            config_file[key] = (
-                input(f"Enter {key} of this client: ") if value == "prompt" else value
-            )
+            config_file[key] = input(f"Enter {key} of this client: ") if value == "prompt" else value
 
     with open("config.toml", "w", encoding="UTF=8") as f:
         f.write(tomlkit.dumps(config_file))
@@ -57,8 +55,8 @@ async def main():
 
     @sio.event()
     async def region(data):
-        sotc.region = sot.Region.fromName(data)
-        print(f"Region set to {sotc.region.name}")
+        sotc.region = sot.region_from_name(data)
+        print(f"Region set to {sotc.region.city}")
 
     @sio.event()
     async def portspiking(data):
@@ -127,6 +125,4 @@ if __name__ == "__main__":
         except:  # pylint: disable=bare-except
             traceback.print_exc()
     else:
-        ctypes.windll.shell32.ShellExecuteW(
-            None, "runas", sys.executable, " ".join(sys.argv), None, 1
-        )
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
