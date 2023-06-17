@@ -37,9 +37,7 @@ class AutomationManager:
             if window in i[1].lower():
                 win32gui.ShowWindow(i[0], 5)  # pylint: disable=c-extension-no-member
                 keyboard.press_and_release("alt")
-                win32gui.SetForegroundWindow(  # pylint: disable=c-extension-no-member
-                    i[0]
-                )
+                win32gui.SetForegroundWindow(i[0])  # pylint: disable=c-extension-no-member
                 break
 
     async def set_ship(self, sio, ship_type):
@@ -77,7 +75,7 @@ class AutomationManager:
         if not self.safe_mode and not portspike:
             my_heading = 0
             while not my_heading:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(5)
                 print("waiting for valid heading")
                 if self.stop:
                     return
@@ -89,9 +87,7 @@ class AutomationManager:
     async def reset(self, sio, leave, portspiking):
         if portspiking:
             await sio.emit("update_status", data="Awaiting connection")
-            while not pyautogui.locateOnScreen(
-                "img/portspike_connected.png", confidence=0.9
-            ):
+            while not pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
                 await asyncio.sleep(0.5)
                 print("waiting for portspike client to connect")
                 if self.stop:
@@ -162,9 +158,7 @@ class AutomationManager:
         if self.ship == "Captaincy":
             keyboard.press_and_release("right")
             await asyncio.sleep(0.6)
-            while not pyautogui.locateOnScreen(
-                "img/captaincy_available.png", confidence=0.9
-            ):
+            while not pyautogui.locateOnScreen("img/captaincy_available.png", confidence=0.9):
                 print("Waiting for captaincy to load")
                 await asyncio.sleep(0.5)
                 if self.stop:
