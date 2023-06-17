@@ -150,7 +150,7 @@ class Controller:
 
         self._change_region = StringVar(value="US East - NY/NJ")
         region_combo_box = tk.Combobox(mainframe, textvariable=self._change_region)
-        region_combo_box.grid(column=2, row=1, sticky=(W, E))
+        region_combo_box.grid(column=2, row=1, sticky="W, E")
         regions = list(core_regions.keys())
         print(regions)
         region_combo_box["values"] = regions
@@ -167,7 +167,7 @@ class Controller:
             offvalue=0,
             command=self.set_port_spike,
         )
-        portspike_checkbox.grid(column=2, row=2, sticky=(W, E))
+        portspike_checkbox.grid(column=2, row=2, sticky="W, E")
 
         self._set_safe_mode = BooleanVar(value=True)
         safe_mode_checkbox = tk.Checkbutton(
@@ -178,7 +178,7 @@ class Controller:
             offvalue=0,
             command=self.set_safe_mode,
         )
-        safe_mode_checkbox.grid(column=2, row=3, sticky=(W, E))
+        safe_mode_checkbox.grid(column=2, row=3, sticky="W, E")
 
         self._set_desired_port_mode = BooleanVar(value=False)
         desired_port_mode_checkbox = tk.Checkbutton(
@@ -189,11 +189,11 @@ class Controller:
             offvalue=0,
             command=self.set_desired_port_mode,
         )
-        desired_port_mode_checkbox.grid(column=2, row=4, sticky=(W, E))
+        desired_port_mode_checkbox.grid(column=2, row=4, sticky="W, E")
 
         self._desired_port = StringVar(value="")
         desired_port_entry = tk.Entry(mainframe, width=7, textvariable=self._desired_port)
-        desired_port_entry.grid(column=2, row=5, sticky=(W, E))
+        desired_port_entry.grid(column=2, row=5, sticky="W, E")
         desired_port_entry.bind("<Return>", self.set_desired_port)
 
         self._set_auto_spike_mode = BooleanVar(value=False)
@@ -205,72 +205,64 @@ class Controller:
             offvalue=0,
             command=self.set_auto_spike_mode,
         )
-        auto_spike_mode_checkbox.grid(column=2, row=6, sticky=(W, E))
+        auto_spike_mode_checkbox.grid(column=2, row=6, sticky="W, E")
 
         self._number_of_ships = StringVar(value="")
         number_of_ships = tk.Entry(mainframe, width=7, textvariable=self._number_of_ships)
-        number_of_ships.grid(column=2, row=7, sticky=(W, E))
+        number_of_ships.grid(column=2, row=7, sticky="W, E")
         number_of_ships.bind("<Return>", self.set_number_of_ships)
 
         # Create a new frame for the list of clients
         self.client_list_frame = tk.Frame(mainframe, padding="5 5 5 5")
-        self.client_list_frame.grid(columnspan=4, row=8, sticky=(W, E))
+        self.client_list_frame.grid(columnspan=4, row=8, sticky="W, E")
         self.client_list_frame.columnconfigure(0, weight=1)
         self.client_list_frame.columnconfigure(1, weight=1)
         self.client_list_frame.columnconfigure(2, weight=1)
         self.client_list_frame.columnconfigure(3, weight=1)
 
         tk.Label(self.client_list_frame, text="Active").grid(column=0, row=0, sticky=(E, W))
-        tk.Label(self.client_list_frame, text="Instance").grid(column=1, row=0, sticky=(W, E))
-        tk.Label(self.client_list_frame, text="Ship type").grid(column=2, row=0, sticky=(W, E))
-        tk.Label(self.client_list_frame, text="Status").grid(column=3, row=0, sticky=(W, E))
+        tk.Label(self.client_list_frame, text="Instance").grid(column=1, row=0, sticky="W, E")
+        tk.Label(self.client_list_frame, text="Ship type").grid(column=2, row=0, sticky="W, E")
+        tk.Label(self.client_list_frame, text="Status").grid(column=3, row=0, sticky="W, E")
 
         self.biggest_match_label = tk.Label(mainframe, text="No matches found")
-        self.biggest_match_label.grid(columnspan=4, row=99, sticky=(W, E))
+        self.biggest_match_label.grid(columnspan=4, row=99, sticky="W, E")
 
         launch_game_buton = tk.Button(
             mainframe,
             text="launch game",
             command=lambda: self.emit_client_event("launch_game"),
         )
-        launch_game_buton.grid(columnspan=4, row=100, sticky=(W, E))
+        launch_game_buton.grid(columnspan=4, row=100, sticky="W, E")
 
         sail_button = tk.Button(mainframe, text="sail", command=lambda: self.emit_client_event("sail"))
-        sail_button.grid(columnspan=4, row=101, sticky=(W, E))
+        sail_button.grid(columnspan=4, row=101, sticky="W, E")
 
         reset_button = tk.Button(
             mainframe,
             text="reset",
             command=lambda: self.emit_client_event("reset"),
         )
-        reset_button.grid(columnspan=4, row=102, sticky=(W, E))
+        reset_button.grid(columnspan=4, row=102, sticky="W, E")
 
         kill_game_button = tk.Button(
             mainframe,
             text="kill game",
             command=lambda: self.emit_client_event("kill_game"),
         )
-        kill_game_button.grid(columnspan=4, row=103, sticky=(W, E))
+        kill_game_button.grid(columnspan=4, row=103, sticky="W, E")
 
         stop_functions_button = tk.Button(
             mainframe,
             text="stop running functions",
             command=lambda: self.emit_client_event("stop_functions"),
         )
-        stop_functions_button.grid(columnspan=4, row=104, sticky=(W, E))
+        stop_functions_button.grid(columnspan=4, row=104, sticky="W, E")
 
         for child in mainframe.winfo_children():
             child.grid_configure(padx=5, pady=5)
 
         root.eval(f"tk::PlaceWindow {root} center")
-
-        @self.sio.event()
-        def region(data):
-            self._change_region.set(data)
-
-        @self.sio.event()
-        def portspiking(data):
-            self._set_port_spike.set(data)
 
         @self.sio.event()
         def client_connect(data):
@@ -300,13 +292,13 @@ class Controller:
                         onvalue=1,
                         offvalue=0,
                     )
-                    active_checkbox.grid(column=0, row=i + 1, sticky=(W, E))
+                    active_checkbox.grid(column=0, row=i + 1, sticky="W, E")
 
                     client.active_checkbox = active_checkbox
 
                     # Create client name label
                     name_label = tk.Label(self.client_list_frame, text=client.name)
-                    name_label.grid(column=1, row=i + 1, sticky=(W, E))
+                    name_label.grid(column=1, row=i + 1, sticky="W, E")
 
                     client.name_label = name_label
 
@@ -318,7 +310,7 @@ class Controller:
                         width=15,
                         textvariable=ship_type_var,
                     )
-                    ship_listbox.grid(column=2, row=i + 1, sticky=(W, E))
+                    ship_listbox.grid(column=2, row=i + 1, sticky="W, E")
                     ship_listbox["values"] = [
                         "Sloop",
                         "Brigantine",
@@ -347,7 +339,7 @@ class Controller:
 
                     # Create client status label
                     status_label = tk.Label(self.client_list_frame, text=client.status)
-                    status_label.grid(column=3, row=i + 1, sticky=(W, E))
+                    status_label.grid(column=3, row=i + 1, sticky="W, E")
 
                     client.status_label = status_label
 
@@ -370,11 +362,17 @@ class Controller:
                 if isinstance(data["status"], int):
                     status = int(str(data["status"])[2:])
                     # if the status is less than 3 characters long. add 0's in front of it until it is 3 characters long
-                    if len(str(status)) < 3:
+                    if len(str(status).strip()) < 3:
                         status = "0" * (3 - len(str(status))) + str(status)
-                    print(status)
-                    if status != self.desired_port.strip():
+                    print(f"status: {status}")
+                    if int(status) != int(self.desired_port.strip()):
+                        print(f"status: {status} is not equal to desired_port: {self.desired_port.strip()} on client {client.name}")
                         self.emit_client_event("reset", client.name)
+                    else:
+                        print(f"status: {status} is equal to desired_port: {self.desired_port.strip()} on client {client.name}")
+                        # disable desired port mode
+                        self.desired_port_mode = False
+                        self.desired_port = None
 
                 elif data["status"] == "Ready":
                     self.emit_client_event("sail", client.name)
@@ -383,21 +381,16 @@ class Controller:
                 print(total_clients)
                 # for every client check if the client.port is not None and get the biggest match. check if it is still possible to get the self.number_of_ships using total_clients, biggest_match and the self.number_of_ships
                 for client in self.client_manager.clients:
+                    # check if all clients have a port
                     if self.client_manager.get_client(client).port is None:
-                        print("client.port is None")
                         return
                 biggest_match = self.client_manager.get_biggest_match()
-                print(total_clients - biggest_match >= self.number_of_ships)
-                if biggest_match is None:
-                    print("biggest_match is None")
-                    return
-                if total_clients - biggest_match < self.number_of_ships:
-                    print(total_clients - biggest_match < self.number_of_ships)
-                    return
-                # if it is possible to get the self.number_of_ships using total_clients, reset all the clients
-
-                if total_clients - biggest_match >= self.number_of_ships:
-                    self.emit_client_event("reset")
+                # check if the biggest match is equal to or bigger than the self.number_of_ships
+                if biggest_match >= self.number_of_ships:
+                    pass
+                else:
+                    for client in self.client_manager.clients:
+                        self.emit_client_event("reset", client)
 
     def change_region(self, *args):
         """
