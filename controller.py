@@ -1,9 +1,8 @@
 from tkinter import *
 from tkinter import ttk as tk
-from sot.Region import Region, core_regions
+from sot.Region import core_regions
 from threadedsio import ThreadedSocketClient
 import traceback
-import asyncio
 
 
 class Client:
@@ -55,6 +54,7 @@ class ClientManager:
         """
         Set the status of a client
         """
+        print("STATUS UPDATE")
         client = self.get_client(name)
         # if the status is an int, set the last 3 numbers of the port to the status
         if isinstance(status, int):
@@ -70,7 +70,7 @@ class ClientManager:
 
         if client:
             client.status = status
-            client.status_label.configure(text=status)
+            client.status_label.configure(text=client.status)
 
     def remove_client(self, name):
         """
@@ -78,11 +78,6 @@ class ClientManager:
         """
 
         if name in self.clients:
-            client = self.get_client(name)
-            client.active_checkbox.destroy()
-            client.name_label.destroy()
-            client.ship_listbox.destroy()
-            client.status_label.destroy()
             del self.clients[name]
             print(f"Client {name} removed")
 
@@ -125,6 +120,14 @@ class ClientManager:
         Get the biggest match
         """
         return self.biggest_match
+
+    def sort_clients_by_name(self):
+        """
+        Sort the clients by name and reinitialize self.clients using the sorted list
+        """
+        sorted_clients = sorted(self.clients.items())
+        print(sorted_clients)
+        self.clients = dict(sorted_clients)
 
 
 class Controller:
@@ -259,6 +262,13 @@ class Controller:
         )
         stop_functions_button.grid(columnspan=4, row=104, sticky="W, E")
 
+        sort_clients_button = tk.Button(
+            mainframe,
+            text="sort clients",
+            command=lambda: self.sort_client_list(),
+        )
+        sort_clients_button.grid(columnspan=4, row=105, sticky="W, E")
+
         for child in mainframe.winfo_children():
             child.grid_configure(padx=5, pady=5)
 
@@ -276,75 +286,7 @@ class Controller:
                     self.client_manager.add_client(client)
 
             # Create labels and listboxes for each client
-            ship_type_vars = {}  # store StringVar objects in a dictionary
-            for i, client_name in enumerate(self.client_manager.clients):
-                client = self.client_manager.get_client(client_name)
-
-                # execute the following code if the client is not already in the list
-                if client.name_label is None:
-                    print(f"Adding {client.name} to the GUI")
-
-                    # create checkbox
-                    client.active = BooleanVar(value=True)
-                    active_checkbox = tk.Checkbutton(
-                        self.client_list_frame,
-                        variable=client.active,
-                        onvalue=1,
-                        offvalue=0,
-                    )
-                    active_checkbox.grid(column=0, row=i + 1, sticky="W, E")
-
-                    client.active_checkbox = active_checkbox
-
-                    # Create client name label
-                    name_label = tk.Label(self.client_list_frame, text=client.name)
-                    name_label.grid(column=1, row=i + 1, sticky="W, E")
-
-                    client.name_label = name_label
-
-                    # Create client ship listbox
-                    ship_type_var = StringVar(value=client.ship_type)
-                    ship_listbox = tk.Combobox(
-                        self.client_list_frame,
-                        height=1,
-                        width=15,
-                        textvariable=ship_type_var,
-                    )
-                    ship_listbox.grid(column=2, row=i + 1, sticky="W, E")
-                    ship_listbox["values"] = [
-                        "Sloop",
-                        "Brigantine",
-                        "Galleon",
-                        "Captaincy",
-                    ]
-
-                    client.ship_type_var = ship_type_var
-                    client.ship_listbox = ship_listbox
-
-                    # Set up a callback to update the client's ship type when the user changes the ship_listbox
-                    def ship_type_changed(event, client=client):
-                        client.ship_type = client.ship_type_var.get()
-                        self.sio.emit(
-                            "change_ship",
-                            data={
-                                "client": client.name,
-                                "ship_type": client.ship_type_var.get(),
-                            },
-                        )
-
-                    ship_listbox.bind("<<ComboboxSelected>>", ship_type_changed)
-
-                    # Save a reference to the StringVar in the dictionary
-                    ship_type_vars[client_name] = ship_type_var
-
-                    # Create client status label
-                    status_label = tk.Label(self.client_list_frame, text=client.status)
-                    status_label.grid(column=3, row=i + 1, sticky="W, E")
-
-                    client.status_label = status_label
-
-                    for child in self.client_list_frame.winfo_children():
-                        child.grid_configure(padx=10, pady=5)
+            self.sort_client_list()
 
         @self.sio.event()
         def client_disconnect(data):
@@ -352,6 +294,9 @@ class Controller:
             for client in self.client_manager.clients.copy().items():
                 if client[0] not in data:
                     self.client_manager.remove_client(client[0])
+
+            # update the client list
+            self.sort_client_list()
 
         @self.sio.event()
         def update_status(data):
@@ -449,6 +394,108 @@ class Controller:
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
             self.client_manager.reset_clients()
+
+    def sort_client_list(self):
+        """
+        Sort the client list by the client name and re-create the client list
+        """
+        self.client_manager.sort_clients_by_name()
+        self.create_client_list()
+
+    def create_client_list(self):
+        """
+        Create the client list
+        """
+        # remove all widgets in the client list frame
+        for widget in self.client_list_frame.winfo_children():
+            widget.destroy()
+
+        # create the client list with the active checkbox, clients name, client ship, client status
+        ship_type_vars = {}
+        for i, client_name in enumerate(self.client_manager.clients):
+            client = self.client_manager.get_client(client_name)
+            try:
+                checkbox_value = client.active.get()
+            except AttributeError:
+                checkbox_value = True
+            try:
+                ship_type = client.ship_type_var.get()
+            except AttributeError:
+                ship_type = "Brigantine"
+            try:
+                status = client.status
+                print(f"status: {status} for client {client.name}")
+            except AttributeError:
+                print("status is not set")
+                status = "Unknown"
+            client.active_checkbox = None
+            client.name_label = None
+            client.ship_listbox = None
+            client.status_label = None
+            if client.name_label is None:
+                print(f"Adding {client.name} to the GUI")
+
+                # create checkbox
+                client.active = BooleanVar(value=checkbox_value)
+                active_checkbox = tk.Checkbutton(
+                    self.client_list_frame,
+                    variable=client.active,
+                    onvalue=1,
+                    offvalue=0,
+                )
+                active_checkbox.grid(column=0, row=i + 1, sticky="W, E")
+
+                client.active_checkbox = active_checkbox
+
+                # Create client name label
+                name_label = tk.Label(self.client_list_frame, text=client.name)
+                name_label.grid(column=1, row=i + 1, sticky="W, E")
+
+                client.name_label = name_label
+
+                # Create client ship listbox
+                ship_type_var = StringVar(value=ship_type)
+                ship_listbox = tk.Combobox(
+                    self.client_list_frame,
+                    height=1,
+                    width=15,
+                    textvariable=ship_type_var,
+                )
+                ship_listbox.grid(column=2, row=i + 1, sticky="W, E")
+                ship_listbox["values"] = [
+                    "Sloop",
+                    "Brigantine",
+                    "Galleon",
+                    "Captaincy",
+                ]
+
+                client.ship_type_var = ship_type_var
+                client.ship_listbox = ship_listbox
+
+                # Set up a callback to update the client's ship type when the user changes the ship_listbox
+                def ship_type_changed(event, client=client):
+                    client.ship_type = client.ship_type_var.get()
+                    self.sio.emit(
+                        "change_ship",
+                        data={
+                            "client": client.name,
+                            "ship_type": client.ship_type_var.get(),
+                        },
+                    )
+
+                ship_listbox.bind("<<ComboboxSelected>>", ship_type_changed)
+
+                # Save a reference to the StringVar in the dictionary
+                ship_type_vars[client_name] = ship_type_var
+
+                # Create client status label
+                status_label = tk.Label(self.client_list_frame, text=status)
+                status_label.grid(column=3, row=i + 1, sticky="W, E")
+
+                client.status_label = status_label
+
+                for child in self.client_list_frame.winfo_children():
+                    child.grid_configure(padx=10, pady=5)
 
 
 # Start the SocketIO client
