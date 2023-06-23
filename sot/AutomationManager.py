@@ -1,6 +1,6 @@
 import keyboard
 import win32gui
-
+import threading
 import pyautogui
 import asyncio
 import pynput.mouse
@@ -66,23 +66,32 @@ class AutomationManager:
         await asyncio.sleep(1.5)
         await self.reset(sio, leave, portspiking=False)
 
+    async def read_memory(self):
+        self.my_heading = heading.get_heading()
+        # self.emissaries = heading.get_emissaries()
+
     async def sail(self, sio, portspike):
         self.activate_window("sea of thieves")
         await asyncio.sleep(0.2)
         keyboard.press_and_release("enter")
         await sio.emit("update_status", data="Searching the seas")
         await asyncio.sleep(1.5)
+
         if not self.safe_mode and not portspike:
-            my_heading = 0
-            while not my_heading:
+            self.my_heading = 0
+
+            while not self.my_heading:
+                heading_thread = threading.Thread(target=self.read_memory)
+                heading_thread.start()
                 await asyncio.sleep(5)
-                print("waiting for valid heading")
+                heading_thread.join()
+                print("Waiting for valid heading")
                 if self.stop:
                     return
-                my_heading = heading.get_heading()
-            await sio.emit("update_status", data=f"outpost={my_heading}")
+
+            await sio.emit("update_status", data=f"outpost={self.my_heading}")
             await asyncio.sleep(10)
-            await walker.commute(my_heading)
+            await walker.commute(self.my_heading)
 
     async def reset(self, sio, leave, portspiking):
         if portspiking:
