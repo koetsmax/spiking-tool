@@ -1,8 +1,6 @@
 import socketio
 import uvicorn
 
-from sot.Region import Region
-
 
 class SpikingServer:
     class Client:
