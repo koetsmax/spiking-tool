@@ -322,12 +322,12 @@ class Controller:
                     # check if all clients have a port
                     if client.port is None:
                         return
+                for client_name, client in self.client_manager.clients.items():
                     # if all clients have a port check if the biggest match is equal to or higher than the self.number_of_ships
                     if self.client_manager.biggest_match >= int(self.number_of_ships):
                         print(f"match of {self.number_of_ships} found with {self.client_manager.biggest_match} ships")
                     else:
-                        for client_name, client in self.client_manager.clients.items():
-                            self.emit_client_event("reset", client.name)
+                        self.emit_client_event("reset", client.name)
 
     def change_region(self, *args):
         """
