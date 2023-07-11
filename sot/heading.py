@@ -155,9 +155,7 @@ def search_data_for_pattern(data: bytes, raw_pattern: str):
     :return: Return the first location of our pattern in the large data scan we
     conducted at memory reader init time.
     """
-    return re.search(
-        convert_pattern_to_regex(raw_pattern), data, re.MULTILINE | re.DOTALL
-    ).start()
+    return re.search(convert_pattern_to_regex(raw_pattern), data, re.MULTILINE | re.DOTALL).start()
 
 
 class ReadMemory:
@@ -213,13 +211,9 @@ class ReadMemory:
         executable), used to make memory calls
         """
         try:
-            return kernel32.OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, self.pid
-            )
+            return kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, self.pid)
         except Exception as e:
-            raise Exception(
-                f"Cannot create handle for pid {self.pid}: " f"Error: {str(e)}"
-            )
+            raise Exception(f"Cannot create handle for pid {self.pid}: " f"Error: {str(e)}")
 
     def _get_base_address(self):
         """
@@ -232,20 +226,14 @@ class ReadMemory:
         :return: the base memory address for the process
         """
         module_entry = MODULEENTRY32()
-        module_entry.dwSize = ctypes.sizeof(
-            MODULEENTRY32
-        )  # pylint: disable=invalid-name, attribute-defined-outside-init
-        h_module_snap = CreateToolhelp32Snapshot(
-            TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self.pid
-        )
+        module_entry.dwSize = ctypes.sizeof(MODULEENTRY32)  # pylint: disable=invalid-name, attribute-defined-outside-init
+        h_module_snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self.pid)
 
         module = Module32First(h_module_snap, ctypes.byref(module_entry))
 
         if not module:
             CloseHandle(h_module_snap)
-            raise Exception(
-                f"Error getting {self.exe} base address: {ctypes.GetLastError()}"
-            )
+            raise Exception(f"Error getting {self.exe} base address: {ctypes.GetLastError()}")
         while module:
             if module_entry.szModule.decode() == self.exe:
                 CloseHandle(h_module_snap)
