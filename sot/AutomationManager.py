@@ -75,9 +75,25 @@ class AutomationManager:
         await asyncio.sleep(0.2)
         keyboard.press_and_release("enter")
         await sio.emit("update_status", data="Searching the seas")
-        await asyncio.sleep(1.5)
+        # if not portspike:
+        #     while not pyautogui.locateOnScreen("img/loading.png", confidence=0.9):
+        #         await asyncio.sleep(0.5)
+        #         print("black screen not found")
+        #         if self.stop:
+        #             return
+
+        #     await sio.emit("update_status", data="Loading...")
+
+        #     while pyautogui.locateOnScreen("img/loading.png", confidence=0.9):
+        #         await asyncio.sleep(0.5)
+        #         print("black screen found")
+        #         if self.stop:
+        #             return
+        #     await sio.emit("update_status", data="Loaded")
+        #     print("loaded")
 
         if not self.safe_mode and not portspike:
+            await asyncio.sleep(10)
             self.my_heading = 0
 
             while not self.my_heading:
