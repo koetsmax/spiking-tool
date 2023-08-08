@@ -124,8 +124,19 @@ class ClientManager:
         """
         Sort the clients by name and reinitialize self.clients using the sorted list
         """
-        sorted_clients = sorted(self.clients.items())
-        self.clients = dict(sorted_clients)
+
+        def get_numeric_part(key):
+            return int(key[3:])
+
+        # Sort the dictionary items based on the numeric part of the keys
+        self.clients = dict(sorted(self.clients.items(), key=lambda x: get_numeric_part(x[0])))
+
+        # Print the sorted clients
+        for key, value in self.clients.items():
+            print(f"{key}: {value}")
+        # print(self.clients.items())
+        # sorted_clients = sorted(self.clients.items())
+        # self.clients = dict(sorted_clients)
 
 
 class Controller:
@@ -327,6 +338,7 @@ class Controller:
                     if self.client_manager.biggest_match >= int(self.number_of_ships):
                         print(f"match of {self.number_of_ships} found with {self.client_manager.biggest_match} ships")
                     else:
+                        print(f"no match of {self.number_of_ships} found. Biggest match was with {self.client_manager.biggest_match} ships")
                         self.emit_client_event("reset", client.name)
 
     def change_region(self, *args):
