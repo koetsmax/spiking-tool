@@ -109,6 +109,33 @@ class AutomationManager:
             await asyncio.sleep(10)
             await walker.commute(self.my_heading)
 
+    async def rejoin_session(self, sio, portspiking, port):
+        if not port:
+            await sio.emit("update_status", data="No previous session found")
+            return
+        if not portspiking:
+            await sio.emit("update_status", data="Only available during portspike")
+            return
+        await sio.emit("update_status", data="Rejoining session")
+        await asyncio.sleep(0.5)
+        while not pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
+                await asyncio.sleep(0.5)
+                print("waiting for portspike client to connect")
+                if self.stop:
+                    return
+        keyboard.press_and_release("enter")
+        await asyncio.sleep(0.3)
+        await sio.emit("update_status", data="Awaiting rejoin prompt")
+        while not pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
+                await asyncio.sleep(0.5)
+                print("waiting for rejoin prompt")
+                if self.stop:
+                    return
+        keyboard.press_and_release("enter")
+        await asyncio.sleep(0.3)
+        await sio.emit("update_status", data=f"Rejoining {port}")
+
+
     async def reset(self, sio, leave, portspiking):
         if portspiking:
             await sio.emit("update_status", data="Awaiting connection")
