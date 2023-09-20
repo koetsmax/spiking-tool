@@ -249,33 +249,40 @@ class Controller:
         sail_button = tk.Button(mainframe, text="sail", command=lambda: self.emit_client_event("sail"))
         sail_button.grid(columnspan=4, row=101, sticky="WE")
 
+        rejoin_session_button = tk.Button(
+            mainframe,
+            text="rejoin session",
+            command=lambda: self.emit_client_event("rejoin_session"),
+        )
+        rejoin_session_button.grid(columnspan=4, row=102, sticky="WE")
+
         reset_button = tk.Button(
             mainframe,
             text="reset",
             command=lambda: self.emit_client_event("reset"),
         )
-        reset_button.grid(columnspan=4, row=102, sticky="WE")
+        reset_button.grid(columnspan=4, row=103, sticky="WE")
 
         kill_game_button = tk.Button(
             mainframe,
             text="kill game",
             command=lambda: self.emit_client_event("kill_game"),
         )
-        kill_game_button.grid(columnspan=4, row=103, sticky="WE")
+        kill_game_button.grid(columnspan=4, row=104, sticky="WE")
 
         stop_functions_button = tk.Button(
             mainframe,
             text="stop running functions",
             command=lambda: self.emit_client_event("stop_functions"),
         )
-        stop_functions_button.grid(columnspan=4, row=104, sticky="WE")
+        stop_functions_button.grid(columnspan=4, row=105, sticky="WE")
 
         sort_clients_button = tk.Button(
             mainframe,
             text="sort clients",
             command=lambda: self.sort_client_list(),
         )
-        sort_clients_button.grid(columnspan=4, row=105, sticky="WE")
+        sort_clients_button.grid(columnspan=4, row=106, sticky="WE")
 
         for child in mainframe.winfo_children():
             child.grid_configure(padx=5, pady=5)
