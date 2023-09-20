@@ -36,7 +36,7 @@ class ConnectionManager:
             self.send_lock = threading.Lock()
             mmdbFolder = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "mmdb")
             self.mmlocation = os.path.join(mmdbFolder, os.listdir(mmdbFolder)[0])
-            self.reader = mmdb.reader(self.mmlocation)
+            self.reader = mmdb.Reader(self.mmlocation)
             self.reader_lock = threading.Lock()
 
             self._delayedSendTask = asyncio.create_task(self._delayedPackageSender())
