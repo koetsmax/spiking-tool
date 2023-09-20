@@ -120,6 +120,12 @@ async def main():
                 await sota.sail(sio, sotc.portspike)
 
     @sio.event()
+    async def rejoin_session(data):
+        for client in data["client"]:
+            if client == config_file["name"]:
+                await sota.rejoin_session(sio, sotc.portspike, port=prev_port if prev_port else None)
+
+    @sio.event()
     async def reset(data):
         for client in data["client"]:
             if client == config_file["name"]:
@@ -140,6 +146,8 @@ async def main():
 
     async def on_join(ip, port):
         try:
+            global prev_port
+            prev_port = int(port)
             await sio.emit("join", {"ip": ip, "port": port})
         except:
             traceback.print_exc()
