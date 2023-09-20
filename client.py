@@ -69,34 +69,40 @@ async def main():
 
     @sio.event()
     async def client_ship(data):
-        if config_file["name"] in data["client"]:
-            await sota.set_ship(sio, data["ship_type"])
+        for client in data["client"]:
+            if client == config_file["name"]:
+                await sota.set_ship(sio, data["ship_type"])
 
     @sio.event()
     async def launch_game(data):
-        if config_file["name"] in data:
-            await sota.launch_game(sio, leave=False)
+        for client in data["client"]:
+            if client == config_file["name"]:
+                await sota.launch_game(sio, leave=False)
 
     @sio.event()
     async def sail(data):
-        if config_file["name"] in data:
-            await sota.sail(sio, sotc.portspike)
+        for client in data["client"]:
+            if client == config_file["name"]:
+                await sota.sail(sio, sotc.portspike)
 
     @sio.event()
     async def reset(data):
-        if config_file["name"] in data:
-            leave = True
-            await sota.reset(sio, leave, sotc.portspike)
+        for client in data["client"]:
+            if client == config_file["name"]:
+                leave = True
+                await sota.reset(sio, leave, sotc.portspike)
 
     @sio.event()
     async def kill_game(data):
-        if config_file["name"] in data:
-            await sota.kill_game(sio)
+        for client in data["client"]:
+            if client == config_file["name"]:
+                await sota.kill_game(sio)
 
     @sio.event()
     async def stop_functions(data):
-        if config_file["name"] in data:
-            await sota.stop_functions(sio)
+        for client in data["client"]:
+            if client == config_file["name"]:
+                await sota.stop_functions(sio)
 
     async def on_join(ip, port):
         try:
