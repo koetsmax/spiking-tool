@@ -1,12 +1,14 @@
-import pydivert
 import asyncio
-import traceback
 import queue
-from time import sleep, monotonic_ns
 import threading
+import traceback
+from time import monotonic_ns, sleep
+
+import pydivert
 from events import EventManager
-from .Region import region_from_name
 from geolite2 import geolite2
+
+from .Region import region_from_name
 
 voice_bytes = b"\x17\xfe\xfd\x00\x01\x00\x00"
 join_bytes = b"\x00\xde\x51\xea\x05"
