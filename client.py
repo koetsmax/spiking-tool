@@ -16,12 +16,6 @@ def is_admin():
         return False
 
 
-config_defaults = {
-    "name": "prompt",
-    "url": "http://spiker.famkoets.nl",
-}
-
-
 def get_config():
     # read or create config.toml if it doesn't exist
     try:
@@ -33,12 +27,6 @@ def get_config():
         config_file = tomlkit.document()
         config_file["name"] = input("Enter name of this client: ")
         config_file["url"] = "http://spiker.famkoets.nl"
-
-    for key, value in config_defaults.items():
-        try:
-            config_file[key]
-        except tomlkit.exceptions.NonExistentKey:
-            config_file[key] = input(f"Enter {key} of this client: ") if value == "prompt" else value
 
     with open("config.toml", "w", encoding="UTF=8") as f:
         f.write(tomlkit.dumps(config_file))
