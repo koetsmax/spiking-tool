@@ -3,10 +3,11 @@ import queue
 import threading
 import traceback
 from time import monotonic_ns, sleep
-
+import os
 import pydivert
 from events import EventManager
-from geolite2 import geolite2
+# from geolite2 import geolite2
+import maxminddb as mmdb
 
 from .Region import region_from_name
 
@@ -33,7 +34,9 @@ class ConnectionManager:
             self.portspike = False
 
             self.send_lock = threading.Lock()
-            self.reader = geolite2.reader()
+            mmdbFolder = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "mmdb")
+            self.mmlocation = os.path.join(mmdbFolder, os.listdir(mmdbFolder)[0])
+            self.reader = mmdb.reader(self.mmlocation)
             self.reader_lock = threading.Lock()
 
             self._delayedSendTask = asyncio.create_task(self._delayedPackageSender())
