@@ -51,6 +51,8 @@ async def main():
     sotc = sot.ConnectionManager()
     sota = sot.AutomationManager()
 
+    # Check if database is up-to-date
+
     config = get_config()
 
     @sio.event()
