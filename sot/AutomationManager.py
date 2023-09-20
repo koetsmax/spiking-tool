@@ -261,3 +261,5 @@ class AutomationManager:
         await asyncio.sleep(2.5)
         self.stop = False
         await sio.emit("update_status", data="No longer stopping functions")
+        await asyncio.sleep(2.5)
+        await sio.emit("update_status", data="Pending...")
