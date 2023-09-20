@@ -1,13 +1,16 @@
 import asyncio
 import ctypes
+import os
+import shutil
 import sys
+import tarfile
+import time
 import traceback
 
+import requests
 import socketio
-import tomlkit
-
 import sot
-
+import tomlkit
 
 def is_admin():
     try:
@@ -35,11 +38,58 @@ def get_config():
 
 
 async def main():
+    # Check if database is up-to-date
+    SpikeToolTemp = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "mmdb")
+    if not os.path.exists(SpikeToolTemp):
+        os.makedirs(SpikeToolTemp)
+
+    mmdbFolder = os.path.join(SpikeToolTemp, "mmdb")
+    if not os.path.exists(mmdbFolder):
+        os.makedirs(mmdbFolder)
+
+    files = os.listdir(mmdbFolder)
+
+    timestamp = 0
+    if len(files) > 0:
+        if files[0].endswith(".mmdb"):
+            fName = files[0].split(".")[0]
+            try:
+                timestamp = int(fName)
+            except:
+                pass
+
+    if timestamp < (int(time.time()) - 86400):
+        print("Database out of date...")
+        print("Clearing database folder...")
+        for file in os.listdir(mmdbFolder):
+            try:
+                os.remove(os.path.join(mmdbFolder, file))
+            except:
+                pass
+
+        print("Downloading new IP database...")
+        fname = str(int(time.time())) + ".mmdb"
+        tarName = "mmdb.tar.gz"
+        defaultName = "GeoLite2-City.mmdb"
+        with open(os.path.join(mmdbFolder, tarName), "wb") as f:
+            with requests.get("https://ipdb.ashen.info") as r:
+                f.write(r.content)
+        with tarfile.open(os.path.join(mmdbFolder, tarName)) as tar:
+            tar.extractall(mmdbFolder)
+        os.remove(os.path.join(mmdbFolder, tarName))
+        tempFolder = os.path.join(mmdbFolder, os.listdir(mmdbFolder)[0])
+        with open(os.path.join(tempFolder, defaultName), "rb") as f:
+                with open(os.path.join(mmdbFolder, fname), "wb") as on:
+                    on.write(f.read())
+        shutil.rmtree(tempFolder)
+        print("Database updated...")
+    else:
+        print("Database already up-to-date...")
+
     sio = socketio.AsyncClient()
     sotc = sot.ConnectionManager()
     sota = sot.AutomationManager()
 
-    # Check if database is up-to-date
 
     config = get_config()
 
