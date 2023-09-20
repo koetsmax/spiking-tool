@@ -13,7 +13,7 @@ class Client:
     def __init__(self, name):
         self.name = name
         self.ship_type = "Brigantine"
-        self.status = "Unknown"
+        self.status = "Pending..."
         self.active = None
         self.active_checkbox = None
         self.name_label = None
@@ -436,7 +436,7 @@ class Controller:
             try:
                 status = client.status
             except AttributeError:
-                status = "Unknown"
+                status = "Pending..."
             client.active_checkbox = None
             client.name_label = None
             client.ship_listbox = None
