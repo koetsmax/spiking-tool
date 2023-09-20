@@ -33,7 +33,7 @@ def get_config():
 
 async def main():
     # Check if database is up-to-date
-    SpikeToolTemp = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "mmdb")
+    SpikeToolTemp = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool")
     if not os.path.exists(SpikeToolTemp):
         os.makedirs(SpikeToolTemp)
 
