@@ -1,5 +1,4 @@
 import asyncio
-import ctypes
 import os
 import shutil
 import sys
@@ -7,16 +6,11 @@ import tarfile
 import time
 import traceback
 
+import pyuac
 import requests
 import socketio
 import sot
 import tomlkit
-
-def is_admin():
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:  # pylint: disable=bare-except
-        return False
 
 
 def get_config():
@@ -165,10 +159,11 @@ async def main():
 
 
 if __name__ == "__main__":
-    if is_admin():
+    if pyuac.isUserAdmin():
         try:
             asyncio.run(main())
         except:  # pylint: disable=bare-except
             traceback.print_exc()
     else:
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+        pyuac.runAsAdmin(wait=False)
+        sys.exit(0)
