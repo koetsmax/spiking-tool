@@ -34,8 +34,13 @@ def get_config():
 async def main():
     print("checking for updates...")
     # check for updates
-    with open("VERSION", "r", encoding="UTF-8") as f:
-        version = f.read()
+    try:
+        with open("VERSION", "r", encoding="UTF-8") as f:
+            version = f.read()
+    except:
+        version = "0.9.9"
+        with open("VERSION", "w", encoding="UTF-8") as f:
+            f.write(version)
     request = requests.get("https://api.github.com/repos/koetsmax/spiking-tool/releases/latest", timeout=15)
     if request.status_code != 200:
         print("Failed to check for updates. Error code:", request.status_code)
