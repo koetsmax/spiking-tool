@@ -10,18 +10,6 @@ CoordMode "Pixel", "Window"
 
 AFKToggle := 0
 
-previous := WinGetList(A_ScriptFullPath " ahk_class AutoHotkey")
-for id in previous{
-	if id != A_ScriptHwnd{
-		WinClose("ahk_id " id)
-	}
-}
-
-if !InStr(A_AhkPath, "_UIA") {
-	Run("*uiAccess " A_ScriptFullPath)
-	ExitApp
-}
-
 f1::
 {
 	Global AFKToggle
@@ -151,7 +139,7 @@ afkActions(){
 		WinActivate "Sea of Thieves"
 		Sleep 500
 	}
-	
+
 	reconnectCheck()
 
 	multiplier := Random(.25, 1)
