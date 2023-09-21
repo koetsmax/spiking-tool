@@ -34,7 +34,7 @@ def get_config():
 async def main():
     print("checking for updates...")
     # check for updates
-    with open("VERSION", "r") as f:
+    with open("VERSION", "r", encoding="UTF-8") as f:
         version = f.read()
     request = requests.get("https://api.github.com/repos/koetsmax/spiking-tool/releases/latest", timeout=15)
     if request.status_code != 200:
@@ -187,7 +187,7 @@ async def main():
         except:
             traceback.print_exc()
 
-    sotc.events.join += on_join
+    sotc.events.join += on_join  # pylint=disable=no-member
 
     auth = {"name": config["name"], "type": "client"}
 
