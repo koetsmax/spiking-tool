@@ -32,16 +32,14 @@ def get_config():
 
 
 async def main():
-
     print("Starting Client...")
     print("Launching afk macro...")
     # start the exe
     try:
-        os.startfile("afk/anti-afk-v2.exe")
+        os.startfile("afk\\anti-afk-v2.exe")
         print("afk macro launched...")
-    except:
-        print("Failed to launch afk macro...")
-
+    except Exception as e:
+        print("Failed to launch afk macro...", e)
 
     print("Checking database...")
     # Check if database is up-to-date
@@ -85,19 +83,16 @@ async def main():
         os.remove(os.path.join(mmdbFolder, tarName))
         tempFolder = os.path.join(mmdbFolder, os.listdir(mmdbFolder)[0])
         with open(os.path.join(tempFolder, defaultName), "rb") as f:
-                with open(os.path.join(mmdbFolder, fname), "wb") as on:
-                    on.write(f.read())
+            with open(os.path.join(mmdbFolder, fname), "wb") as on:
+                on.write(f.read())
         shutil.rmtree(tempFolder)
         print("Database updated...")
     else:
         print("Database already up-to-date...")
 
-    
-
     sio = socketio.AsyncClient()
     sotc = sot.ConnectionManager()
     sota = sot.AutomationManager()
-
 
     config = get_config()
 
