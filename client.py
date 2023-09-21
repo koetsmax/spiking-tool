@@ -32,6 +32,32 @@ def get_config():
 
 
 async def main():
+    print("checking for updates...")
+    # check for updates
+    with open("VERSION", "r") as f:
+        version = f.read()
+    request = requests.get("https://api.github.com/repos/koetsmax/spiking-tool/releases/latest", timeout=15)
+    if request.status_code != 200:
+        print("Failed to check for updates. Error code: %s", request.status_code)
+    else:
+        request_dictionary = request.json()
+        with open("version", "r", encoding="UTF-8") as versionfile:
+            local_version = versionfile.read()
+        online_version = request_dictionary["name"]
+        if version.parse(local_version) < version.parse(online_version):
+            url = f"https://github.com/koetsmax/spiking-tool/releases/download/{online_version}/Client.exe"  # pylint: disable=line-too-long
+            download = requests.get(url, allow_redirects=True, timeout=30)
+            # overwrite the old exe with the new one
+            with open("TempClient.exe", "wb") as f:
+                f.write(download.content)
+            print("Client updated. Restarting...")
+            # launch the powershelll script to replace the old exe with the new one
+            os.system("powershell.exe -ExecutionPolicy Bypass -File update.ps1")
+            sys.exit(0)
+
+        else:
+            print("Client up-to-date...")
+
     print("Starting Client...")
     print("Launching afk macro...")
     # start the exe
