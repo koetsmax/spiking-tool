@@ -277,12 +277,15 @@ class Controller:
         )
         stop_functions_button.grid(columnspan=4, row=105, sticky="WE")
 
-        sort_clients_button = tk.Button(
-            mainframe,
-            text="sort clients",
-            command=lambda: self.sort_client_list(),
-        )
-        sort_clients_button.grid(columnspan=4, row=106, sticky="WE")
+        # sort_clients_button = tk.Button(
+        #     mainframe,
+        #     text="sort clients",
+        #     command=lambda: self.sort_client_list(),
+        # )
+        # sort_clients_button.grid(columnspan=4, row=106, sticky="WE")
+
+        self.last_pressed_label = tk.Label(mainframe, text="Last pressed: None")
+        self.last_pressed_label.grid(columnspan=4, row=106, sticky="WE")
 
         for child in mainframe.winfo_children():
             child.grid_configure(padx=5, pady=5)
@@ -398,6 +401,7 @@ class Controller:
         """
         Emit an event to all clients
         """
+        self.last_pressed_label.config(text=f"Last pressed: {event}")
         if not args:
             active_clients = self.client_manager.get_active_clients()
         else:
