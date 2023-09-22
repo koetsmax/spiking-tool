@@ -8,7 +8,7 @@ a = Analysis(
     ['client.py'],
     pathex=[],
     binaries=[('C:\\Users\\Max\\Desktop\\spiking-tool\\spiker\\Lib\\site-packages\\vgamepad\\win\\vigem\\client\\x64\\ViGEmClient.dll', '.\\vgamepad\\win\\vigem\\client\\x64')],
-    datas=[('C:\\Users\\Max\\Desktop\\spiking-tool\\spiker\\Lib\\site-packages\\_maxminddb_geolite2\\GeoLite2-City.mmdb', '_maxminddb_geolite2')],
+    datas=[('C:\\Users\\Max\\Desktop\\spiking-tool\\afk\\anti-afk-v2.exe', 'anti-afk-v2.exe'), ('C:\\Users\\Max\\Desktop\\spiking-tool\\update.ps1', 'update.ps1')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

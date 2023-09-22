@@ -1,12 +1,15 @@
-import pydivert
 import asyncio
-import traceback
 import queue
-from time import sleep, monotonic_ns
 import threading
+import traceback
+from time import monotonic_ns, sleep
+import os
+import pydivert
 from events import EventManager
+# from geolite2 import geolite2
+import maxminddb as mmdb
+
 from .Region import region_from_name
-from geolite2 import geolite2
 
 voice_bytes = b"\x17\xfe\xfd\x00\x01\x00\x00"
 join_bytes = b"\x00\xde\x51\xea\x05"
@@ -31,7 +34,9 @@ class ConnectionManager:
             self.portspike = False
 
             self.send_lock = threading.Lock()
-            self.reader = geolite2.reader()
+            mmdbFolder = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "mmdb")
+            self.mmlocation = os.path.join(mmdbFolder, os.listdir(mmdbFolder)[0])
+            self.reader = mmdb.Reader(self.mmlocation)
             self.reader_lock = threading.Lock()
 
             self._delayedSendTask = asyncio.create_task(self._delayedPackageSender())
