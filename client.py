@@ -15,7 +15,7 @@ from packaging import version
 
 import sot
 
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 
 def get_config():
@@ -52,8 +52,8 @@ async def main():
             with open("TempClient.exe", "wb") as f:
                 f.write(download.content)
             print("Client updated. Restarting...")
-            # Exit the client and run the powershell script to replace the exe
-            subprocess.Popen(["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", "update.ps1"])
+            # Exit the client and run the powershell script in the background to replace the exe
+            subprocess.Popen(["powershell.exe", "-File", "update.ps1"], shell=True)
             sys.exit(0)
 
         else:
