@@ -1,6 +1,7 @@
 import asyncio
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 import time
@@ -14,7 +15,7 @@ from packaging import version
 
 import sot
 
-VERSION = "2.0.0"
+VERSION = "1.0.0"
 
 
 def get_config():
@@ -51,8 +52,8 @@ async def main():
             with open("TempClient.exe", "wb") as f:
                 f.write(download.content)
             print("Client updated. Restarting...")
-            # launch the powershelll script to replace the old exe with the new one
-            os.system("powershell.exe -ExecutionPolicy Bypass -File update.ps1")
+            # Exit the client and run the powershell script to replace the exe
+            subprocess.Popen(["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", "update.ps1"])
             sys.exit(0)
 
         else:
