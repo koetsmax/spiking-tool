@@ -9,8 +9,12 @@ import traceback
 import pyuac
 import requests
 import socketio
-import sot
 import tomlkit
+from packaging import version
+
+import sot
+
+VERSION = "2.0.0"
 
 
 def get_config():
@@ -34,22 +38,13 @@ def get_config():
 async def main():
     print("checking for updates...")
     # check for updates
-    try:
-        with open("VERSION", "r", encoding="UTF-8") as f:
-            version = f.read()
-    except:
-        version = "0.9.9"
-        with open("VERSION", "w", encoding="UTF-8") as f:
-            f.write(version)
     request = requests.get("https://api.github.com/repos/koetsmax/spiking-tool/releases/latest", timeout=15)
     if request.status_code != 200:
         print("Failed to check for updates. Error code:", request.status_code)
     else:
         request_dictionary = request.json()
-        with open("version", "r", encoding="UTF-8") as versionfile:
-            local_version = versionfile.read()
         online_version = request_dictionary["name"]
-        if version.parse(local_version) < version.parse(online_version):
+        if version.parse(VERSION) < version.parse(online_version):
             url = f"https://github.com/koetsmax/spiking-tool/releases/download/{online_version}/Client.exe"  # pylint: disable=line-too-long
             download = requests.get(url, allow_redirects=True, timeout=30)
             # overwrite the old exe with the new one
