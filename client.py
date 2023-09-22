@@ -67,7 +67,7 @@ async def main():
     print("Launching afk macro...")
     # start the exe
     try:
-        os.startfile("afk\\anti-afk-v2.exe")
+        os.startfile("anti-afk-v2.exe")
         print("afk macro launched...")
     except Exception as e:
         print("Failed to launch afk macro...", e)
@@ -143,44 +143,44 @@ async def main():
 
     @sio.event()
     async def client_ship(data):
-        for client in data["client"]:
+        for client in data:
             if client == config_file["name"]:
                 await sota.set_ship(sio, data["ship_type"])
 
     @sio.event()
     async def launch_game(data):
-        for client in data["client"]:
+        for client in data:
             if client == config_file["name"]:
                 await sota.launch_game(sio, leave=False)
 
     @sio.event()
     async def sail(data):
-        for client in data["client"]:
+        for client in data:
             if client == config_file["name"]:
                 await sota.sail(sio, sotc.portspike)
 
     @sio.event()
     async def rejoin_session(data):
-        for client in data["client"]:
+        for client in data:
             if client == config_file["name"]:
                 await sota.rejoin_session(sio, sotc.portspike, port=prev_port if prev_port else None)
 
     @sio.event()
     async def reset(data):
-        for client in data["client"]:
+        for client in data:
             if client == config_file["name"]:
                 leave = True
                 await sota.reset(sio, leave, sotc.portspike)
 
     @sio.event()
     async def kill_game(data):
-        for client in data["client"]:
+        for client in data:
             if client == config_file["name"]:
                 await sota.kill_game(sio)
 
     @sio.event()
     async def stop_functions(data):
-        for client in data["client"]:
+        for client in data:
             if client == config_file["name"]:
                 await sota.stop_functions(sio)
 
