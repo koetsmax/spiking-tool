@@ -15,7 +15,7 @@ from packaging import version
 
 import sot
 
-VERSION = "2.1.1"
+VERSION = "2.1.3"
 
 
 def get_config():
@@ -139,7 +139,7 @@ async def main():
 
     @sio.event()
     async def client_ship(data):
-        for client in data["client"]:
+        for client in [data["client"]]:
             if client == config_file["name"]:
                 await sota.set_ship(sio, data["ship_type"])
 
