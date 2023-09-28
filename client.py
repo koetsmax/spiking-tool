@@ -139,7 +139,7 @@ async def main():
 
     @sio.event()
     async def client_ship(data):
-        for client in data:
+        for client in data["client"]:
             if client == config_file["name"]:
                 await sota.set_ship(sio, data["ship_type"])
 
