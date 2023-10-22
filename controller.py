@@ -328,9 +328,10 @@ class Controller:
                     if len(str(status).strip()) < 3:
                         status = "0" * (3 - len(str(status))) + str(status)
                     if int(status) != int(self.desired_port.strip()):
+                        print(f"C{client.name}: {int(status)}")
                         self.emit_client_event("reset", client.name)
                     else:
-                        print(f"MATCH FOUND: {client.name}")
+                        print(f"----------------------MATCH FOUND: {client.name}----------------------")
                         # disable desired port mode
                         self.desired_port_mode = False
                         self.desired_port = None
@@ -346,7 +347,7 @@ class Controller:
                 for client_name, client in self.client_manager.clients.items():
                     # if all clients have a port check if the biggest match is equal to or higher than the self.number_of_ships
                     if self.client_manager.biggest_match >= int(self.number_of_ships):
-                        print(f"match of {self.number_of_ships} found with {self.client_manager.biggest_match} ships")
+                        print(f"----------------------MATCH OF {self.number_of_ships} FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------")
                     else:
                         print(f"no match of {self.number_of_ships} found. Biggest match was with {self.client_manager.biggest_match} ships")
                         self.emit_client_event("reset", client.name)
