@@ -206,6 +206,8 @@ class AutomationManager:
         await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
+        keyboard.press_and_release("enter")
+        await asyncio.sleep(0.6)
 
         # select ship
         print(self.ship)
