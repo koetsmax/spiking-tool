@@ -160,7 +160,7 @@ class Controller:
         self.auto_spike_mode = False
         self.number_of_ships = None
 
-        self._change_region = StringVar(value="US East - NY/NJ")
+        self._change_region = StringVar(value="US East - Washington")
         region_combo_box = tk.Combobox(mainframe, textvariable=self._change_region)
         region_combo_box.grid(column=2, row=1, sticky="WE")
         regions = list(core_regions.keys())

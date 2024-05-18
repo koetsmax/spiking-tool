@@ -4,6 +4,7 @@ import threading
 import pyautogui
 import asyncio
 import pynput.mouse
+import pyscreeze
 
 
 class AutomationManager:
@@ -89,19 +90,36 @@ class AutomationManager:
             return
         await sio.emit("update_status", data="Rejoining session")
         await asyncio.sleep(0.5)
-        while not pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
+
+        while True:
+            try:
+                if pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
+                    break
+            except pyautogui.ImageNotFoundException:
+                pass
+
             await asyncio.sleep(0.5)
             print("waiting for portspike client to connect")
+
             if self.stop:
                 return
+
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.3)
         await sio.emit("update_status", data="Awaiting rejoin prompt")
-        while not pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
+        while True:
+            try:
+                if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
+                    break
+            except pyautogui.ImageNotFoundException:
+                pass
+
             await asyncio.sleep(0.5)
             print("waiting for rejoin prompt")
+
             if self.stop:
                 return
+
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.3)
         await sio.emit("update_status", data=f"Rejoining {port}")
@@ -109,17 +127,32 @@ class AutomationManager:
     async def reset(self, sio, leave, portspiking):
         if portspiking:
             await sio.emit("update_status", data="Awaiting connection")
-            while not pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
+            while True:
+                try:
+                    if pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
+                        break
+                except pyautogui.ImageNotFoundException:
+                    pass
+
                 await asyncio.sleep(0.5)
                 print("waiting for portspike client to connect")
+
                 if self.stop:
                     return
+
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
             await sio.emit("update_status", data="Awaiting rejoin prompt")
-            while not pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
+            while True:
+                try:
+                    if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
+                        break
+                except pyautogui.ImageNotFoundException:
+                    pass
+
                 await asyncio.sleep(0.5)
                 print("waiting for rejoin prompt")
+
                 if self.stop:
                     return
             keyboard.press_and_release("esc")
@@ -151,26 +184,47 @@ class AutomationManager:
             keyboard.press_and_release("enter")
         if not portspiking:
             # start game
-            while not pyautogui.locateOnScreen("img/start_screen.png", confidence=0.9):
+            while True:
+                try:
+                    if pyautogui.locateOnScreen("img/start_screen.png", confidence=0.9):
+                        break
+                except pyautogui.ImageNotFoundException:
+                    pass
+
                 print("Waiting for start screen")
                 await asyncio.sleep(0.5)
+
                 if self.stop:
                     return
+
             await sio.emit("update_status", data="Starting Game")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
 
         # start menuing
-        while not pyautogui.locateOnScreen("img/play_screen.png", confidence=0.9):
+        while True:
+            try:
+                if pyautogui.locateOnScreen("img/play_screen.png", confidence=0.9):
+                    break
+            except pyautogui.ImageNotFoundException:
+                pass
+
             print("Waiting for play screen")
             await asyncio.sleep(0.5)
-            if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
-                await asyncio.sleep(0.5)
-                keyboard.press_and_release("esc")
-                print("Declined rejoin prompt")
+
+            try:
+                if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
+                    await asyncio.sleep(0.5)
+                    keyboard.press_and_release("esc")
+                    print("Declined rejoin prompt")
+            except pyautogui.ImageNotFoundException:
+                pass
+
             if self.stop:
                 return
         await sio.emit("update_status", data="Selecting gamemode")
+
+        await asyncio.sleep(3)
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("right")
@@ -186,18 +240,36 @@ class AutomationManager:
         if self.ship == "Captaincy":
             keyboard.press_and_release("right")
             await asyncio.sleep(0.6)
-            while not pyautogui.locateOnScreen("img/captaincy_available.png", confidence=0.9):
+            while True:
+                try:
+                    if pyautogui.locateOnScreen("img/captaincy_available.png", confidence=0.9):
+                        break
+                except pyautogui.ImageNotFoundException:
+                    pass
+
                 print("Waiting for captaincy to load")
                 await asyncio.sleep(0.5)
+
                 if self.stop:
                     return
+
             keyboard.press_and_release("enter")
-            while not pyautogui.locateOnScreen("img/ship_loaded.png", confidence=0.9):
+            while True:
+                try:
+                    if pyautogui.locateOnScreen("img/ship_loaded.png", confidence=0.9):
+                        break
+                except pyautogui.ImageNotFoundException:
+                    pass
+
                 print("Waiting for captaincy ship to load")
                 await asyncio.sleep(0.5)
+
                 if self.stop:
                     return
-        elif self.ship == "Brigantine":
+        else:
+            keyboard.press_and_release("enter")
+
+        if self.ship == "Brigantine":
             keyboard.press_and_release("down")
         elif self.ship == "Sloop":
             keyboard.press_and_release("down")
@@ -210,9 +282,18 @@ class AutomationManager:
         keyboard.press_and_release("enter")
 
         # get to set sail screen
-        while not pyautogui.locateOnScreen("img/sail_screen.png", confidence=0.9):
+        while True:
+            try:
+                if pyautogui.locateOnScreen("img/sail_screen.png", confidence=0.9):
+                    break
+            except pyautogui.ImageNotFoundException:
+                pass
+
             print("Waiting for sail screen")
             await asyncio.sleep(0.5)
+
+            if self.stop:
+                return
         await sio.emit("update_status", data="Ready")
         print("waiting on set sail screen")
 
