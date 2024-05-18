@@ -15,7 +15,7 @@ from packaging import version
 
 import sot
 
-VERSION = "2.1.5"
+VERSION = "2.2.0"
 
 
 def get_config():
@@ -132,10 +132,6 @@ async def main():
     async def portspiking(data):
         sotc.portspike = data
         print(f"Portspiking set to {sotc.portspike}")
-
-    @sio.event()
-    async def safe_mode(data):
-        await sota.set_safe_mode(data)
 
     @sio.event()
     async def client_ship(data):

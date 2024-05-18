@@ -4,14 +4,12 @@ import threading
 import pyautogui
 import asyncio
 import pynput.mouse
-from sot import heading, walker
 
 
 class AutomationManager:
     def __init__(self):
         self.stop = False
         self.ship = "Brigantine"
-        self.safe_mode = True
 
     def window_enumeration_handler(self, hwnd, top_windows):
         """
@@ -47,12 +45,6 @@ class AutomationManager:
         self.ship = ship_type
         await sio.emit("update_status", data=f"Ship set to {self.ship}")
 
-    async def set_safe_mode(self, safe_mode):
-        """
-        Function that sets the safe mode
-        """
-        self.safe_mode = safe_mode
-
     async def launch_game(self, sio, leave):
         """
         Function that launches the game and gets the client to the set sail screen
@@ -65,10 +57,6 @@ class AutomationManager:
         keyboard.press_and_release("enter")
         await asyncio.sleep(1.5)
         await self.reset(sio, leave, portspiking=False)
-
-    async def read_memory(self):
-        self.my_heading = heading.get_heading()
-        # self.emissaries = heading.get_emissaries()
 
     async def sail(self, sio, portspike):
         self.activate_window("sea of thieves")
@@ -91,23 +79,6 @@ class AutomationManager:
         #             return
         #     await sio.emit("update_status", data="Loaded")
         #     print("loaded")
-
-        if not self.safe_mode and not portspike:
-            await asyncio.sleep(10)
-            self.my_heading = 0
-
-            while not self.my_heading:
-                heading_thread = threading.Thread(target=self.read_memory)
-                heading_thread.start()
-                await asyncio.sleep(5)
-                heading_thread.join()
-                print("Waiting for valid heading")
-                if self.stop:
-                    return
-
-            await sio.emit("update_status", data=f"outpost={self.my_heading}")
-            await asyncio.sleep(10)
-            await walker.commute(self.my_heading)
 
     async def rejoin_session(self, sio, portspiking, port):
         if not port:

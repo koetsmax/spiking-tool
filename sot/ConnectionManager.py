@@ -6,6 +6,7 @@ from time import monotonic_ns, sleep
 import os
 import pydivert
 from events import EventManager
+
 # from geolite2 import geolite2
 import maxminddb as mmdb
 

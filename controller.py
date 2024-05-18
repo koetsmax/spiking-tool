@@ -180,17 +180,6 @@ class Controller:
         )
         portspike_checkbox.grid(column=2, row=2, sticky="WE")
 
-        self._set_safe_mode = BooleanVar(value=True)
-        safe_mode_checkbox = tk.Checkbutton(
-            mainframe,
-            variable=self._set_safe_mode,
-            text="Safe mode",
-            onvalue=1,
-            offvalue=0,
-            command=self.set_safe_mode,
-        )
-        safe_mode_checkbox.grid(column=2, row=3, sticky="WE")
-
         self._set_desired_port_mode = BooleanVar(value=False)
         desired_port_mode_checkbox = tk.Checkbutton(
             mainframe,
@@ -296,7 +285,6 @@ class Controller:
         def client_connect(data):
             self.change_region()
             self.set_port_spike()
-            self.set_safe_mode()
             self.set_desired_port_mode()
             self.set_auto_spike_mode()
             for client in data:
@@ -363,12 +351,6 @@ class Controller:
         Set the portspiking value of all clients to the value selected in the dropdown menu
         """
         self.sio.emit("portspiking", self._set_port_spike.get())
-
-    def set_safe_mode(self):
-        """
-        Set the safe mode value of all clients to the value selected in the dropdown menu
-        """
-        self.sio.emit("safe_mode", self._set_safe_mode.get())
 
     def set_desired_port_mode(self):
         """
