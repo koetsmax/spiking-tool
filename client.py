@@ -15,7 +15,7 @@ from packaging import version
 
 import sot
 
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 
 
 def get_config():

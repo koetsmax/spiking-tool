@@ -22,7 +22,7 @@ class ConnectionManager:
             self.packet = packet
             self.delay = delay
 
-    def __init__(self, region="US East - NY/NJ"):
+    def __init__(self, region="US East - Washington"):
         try:
             self.region = region_from_name(region)
             print("Region:", self.region, "City:", self.region.city, "Country:", self.region.country, "Shorthand:", self.region.shorthand)
