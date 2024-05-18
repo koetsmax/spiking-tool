@@ -13,5 +13,6 @@ psutil
 keyboard
 pynput
 vgamepad
-ctypes
-struct
+pyuac
+requests
+packaging
