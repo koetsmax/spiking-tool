@@ -95,7 +95,7 @@ class AutomationManager:
             try:
                 if pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
                     break
-            except pyscreeze.ImageNotFoundException:
+            except pyautogui.ImageNotFoundException:
                 pass
 
             await asyncio.sleep(0.5)
@@ -111,7 +111,7 @@ class AutomationManager:
             try:
                 if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
                     break
-            except pyscreeze.ImageNotFoundException:
+            except pyautogui.ImageNotFoundException:
                 pass
 
             await asyncio.sleep(0.5)
@@ -131,7 +131,7 @@ class AutomationManager:
                 try:
                     if pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
                         break
-                except pyscreeze.ImageNotFoundException:
+                except pyautogui.ImageNotFoundException:
                     pass
 
                 await asyncio.sleep(0.5)
@@ -147,7 +147,7 @@ class AutomationManager:
                 try:
                     if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
                         break
-                except pyscreeze.ImageNotFoundException:
+                except pyautogui.ImageNotFoundException:
                     pass
 
                 await asyncio.sleep(0.5)
@@ -188,7 +188,7 @@ class AutomationManager:
                 try:
                     if pyautogui.locateOnScreen("img/start_screen.png", confidence=0.9):
                         break
-                except pyscreeze.ImageNotFoundException:
+                except pyautogui.ImageNotFoundException:
                     pass
 
                 print("Waiting for start screen")
@@ -206,7 +206,7 @@ class AutomationManager:
             try:
                 if pyautogui.locateOnScreen("img/play_screen.png", confidence=0.9):
                     break
-            except pyscreeze.ImageNotFoundException:
+            except pyautogui.ImageNotFoundException:
                 pass
 
             print("Waiting for play screen")
@@ -217,12 +217,14 @@ class AutomationManager:
                     await asyncio.sleep(0.5)
                     keyboard.press_and_release("esc")
                     print("Declined rejoin prompt")
-            except pyscreeze.ImageNotFoundException:
+            except pyautogui.ImageNotFoundException:
                 pass
 
             if self.stop:
                 return
         await sio.emit("update_status", data="Selecting gamemode")
+
+        await asyncio.sleep(3)
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("right")
@@ -242,7 +244,7 @@ class AutomationManager:
                 try:
                     if pyautogui.locateOnScreen("img/captaincy_available.png", confidence=0.9):
                         break
-                except pyscreeze.ImageNotFoundException:
+                except pyautogui.ImageNotFoundException:
                     pass
 
                 print("Waiting for captaincy to load")
@@ -256,7 +258,7 @@ class AutomationManager:
                 try:
                     if pyautogui.locateOnScreen("img/ship_loaded.png", confidence=0.9):
                         break
-                except pyscreeze.ImageNotFoundException:
+                except pyautogui.ImageNotFoundException:
                     pass
 
                 print("Waiting for captaincy ship to load")
@@ -264,8 +266,10 @@ class AutomationManager:
 
                 if self.stop:
                     return
+        else:
+            keyboard.press_and_release("enter")
 
-        elif self.ship == "Brigantine":
+        if self.ship == "Brigantine":
             keyboard.press_and_release("down")
         elif self.ship == "Sloop":
             keyboard.press_and_release("down")
@@ -282,7 +286,7 @@ class AutomationManager:
             try:
                 if pyautogui.locateOnScreen("img/sail_screen.png", confidence=0.9):
                     break
-            except pyscreeze.ImageNotFoundException:
+            except pyautogui.ImageNotFoundException:
                 pass
 
             print("Waiting for sail screen")
