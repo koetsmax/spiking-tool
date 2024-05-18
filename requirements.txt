@@ -16,3 +16,7 @@ vgamepad
 pyuac
 requests
 packaging
+pyinstaller
+pyscreeze
+pillow
+opencv-python
