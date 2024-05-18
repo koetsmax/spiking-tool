@@ -62,10 +62,6 @@ class SpikingServer:
             await self.sio.emit("portspiking", data)
 
         @self.sio.event
-        async def safe_mode(sid, data):
-            await self.sio.emit("safe_mode", data)
-
-        @self.sio.event
         async def change_ship(sid, data):
             await self.sio.emit("client_ship", data=data)
 
