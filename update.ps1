@@ -1,5 +1,6 @@
 Start-Sleep -s 2
-Remove-Item -Path C:\Users\max\Desktop\client.exe
-Rename-Item -Path C:\Users\max\Desktop\TempClient.exe -NewName client.exe
+Remove-Item -Path C:\Users\sot\Desktop\client.exe
+Start-Sleep -s 2
+Rename-Item -Path C:\Users\sot\Desktop\TempClient.exe -NewName client.exe
 # launch the file called Client.exe on the desktop
-Start-Process -FilePath C:\Users\max\Desktop\client.exe
+Start-Process -FilePath C:\Users\sot\Desktop\client.exe
