@@ -29,6 +29,7 @@ class ConnectionManager:
             self.packetQueue = queue.Queue()
             self.events = EventManager(events=["join"])
             self.disconnect = False
+            self.force_disconnect = False
             self.lastConnected = {"server": None, "time": 0}
             self.packetTasks = set()
 
@@ -78,6 +79,9 @@ class ConnectionManager:
             try:
                 packet = self._winDivert.recv()
                 try:
+                    if self.force_disconnect:
+                        print("Dropping packet")
+                        continue
                     if self.disconnect:
                         # wait for 30 seconds after last timeout
                         if monotonic_ns() - self.timeout > 5 * 1000000000:
