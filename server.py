@@ -25,7 +25,7 @@ class SpikingServer:
 
             if auth == "Controller":
                 self.controller = sid
-            self.sio.enter_room(sid, self.clients[sid].type)
+            await self.sio.enter_room(sid, self.clients[sid].type)
             client_names = [self.clients[client].name for client in self.clients]
             if self.controller:
                 await self.sio.emit("client_connect", data=client_names, room=self.controller)
