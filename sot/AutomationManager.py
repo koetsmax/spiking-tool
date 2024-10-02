@@ -32,6 +32,13 @@ class AutomationManager:
             self.window_enumeration_handler,  # pylint: disable=c-extension-no-member
             top_windows,
         )
+
+        # first try to minimize the client window
+        for i in top_windows:
+            if "client.exe" in i[1].lower():
+                win32gui.ShowWindow(i[0], 6)
+                break
+
         for i in top_windows:
             if window in i[1].lower():
                 win32gui.ShowWindow(i[0], 5)  # pylint: disable=c-extension-no-member
