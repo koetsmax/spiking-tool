@@ -222,6 +222,28 @@ class AutomationManager:
 
             if self.stop:
                 return
+
+        # Wait for 3 seconds so the stupid popup has time to load
+        await sio.emit("update_status", data="Waiting for the popup")
+        await asyncio.sleep(3)
+
+        # Check if the stupid popup is there, if it is, close it
+        try:
+            if pyautogui.locateOnScreen("img/stupid_popup_1.png", confidence=0.9):
+                keyboard.press_and_release("esc")
+                await asyncio.sleep(0.5)
+                print("Closed popup")
+        except pyautogui.ImageNotFoundException:
+            pass
+
+        try:
+            if pyautogui.locateOnScreen("img/stupid_popup_2.png", confidence=0.9):
+                keyboard.press_and_release("esc")
+                await asyncio.sleep(0.5)
+                print("Closed popup")
+        except pyautogui.ImageNotFoundException:
+            pass
+
         await sio.emit("update_status", data="Selecting gamemode")
 
         await asyncio.sleep(3)
