@@ -308,6 +308,8 @@ class Controller:
         def update_status(data):
             self.client_manager.set_client_status(data["client"], data["status"])
             self.client_manager.update_biggest_match(self.biggest_match_label)
+            all_clients_matched = True
+            all_client_ready = True
             if self.desired_port_mode and not self.desired_port is None:
                 client = self.client_manager.get_client(data["client"])
                 if isinstance(data["status"], int):
@@ -331,14 +333,19 @@ class Controller:
                 for client_name, client in self.client_manager.clients.items():
                     # check if all clients have a port
                     if client.port is None:
-                        return
-                for client_name, client in self.client_manager.clients.items():
-                    # if all clients have a port check if the biggest match is equal to or higher than the self.number_of_ships
-                    if self.client_manager.biggest_match >= int(self.number_of_ships):
-                        print(f"----------------------MATCH OF {self.number_of_ships} FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------")
-                    else:
-                        print(f"no match of {self.number_of_ships} found. Biggest match was with {self.client_manager.biggest_match} ships")
-                        self.emit_client_event("reset", client.name)
+                        all_clients_matched = False
+                    if client.status != "Ready":
+                        all_client_ready = False
+                if all_clients_matched:
+                    for client_name, client in self.client_manager.clients.items():
+                        # if all clients have a port check if the biggest match is equal to or higher than the self.number_of_ships
+                        if self.client_manager.biggest_match >= int(self.number_of_ships):
+                            print(f"----------------------MATCH OF {self.number_of_ships} FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------")
+                        else:
+                            print(f"no match of {self.number_of_ships} found. Biggest match was with {self.client_manager.biggest_match} ships")
+                            self.emit_client_event("reset", client.name)
+                if all_client_ready:
+                    self.emit_client_event("sail")
 
     def change_region(self, *args):
         """
