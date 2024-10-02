@@ -246,7 +246,6 @@ class AutomationManager:
 
         await sio.emit("update_status", data="Selecting gamemode")
 
-        await asyncio.sleep(3)
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("right")
