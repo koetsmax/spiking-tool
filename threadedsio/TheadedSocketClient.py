@@ -20,7 +20,14 @@ class ThreadedSocketClient():
         self.thread.start()
 
     async def socketio_thread(self, url, auth):
-        await self.sio.connect(url, auth=auth)
+        not_connected = True
+        while not_connected:
+            try:
+                await self.sio.connect(url, auth=auth)
+                not_connected = False
+            except:
+                traceback.print_exc()
+                await asyncio.sleep(1)
         await self.sio.wait()
 
     def emit(self, name, data=None):
