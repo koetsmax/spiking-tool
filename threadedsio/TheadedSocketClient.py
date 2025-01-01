@@ -6,21 +6,24 @@ import traceback
 from events import EventManager
 
 
-class ThreadedSocketClient():
+class ThreadedSocketClient:
     def __init__(self, url, auth):
         self.sio = socketio.AsyncClient()
         self.events = EventManager(asyncd=False)
         self.added_events = set()
         self.emitQueue = queue.Queue()
-        self.thread = threading.Thread(
-            target=self.thread_func,
-            args=[url, auth],
-            daemon=True
-        )
+        self.thread = threading.Thread(target=self.thread_func, args=[url, auth], daemon=True)
         self.thread.start()
 
     async def socketio_thread(self, url, auth):
-        await self.sio.connect(url, auth=auth)
+        not_connected = True
+        while not_connected:
+            try:
+                await self.sio.connect(url, auth=auth)
+                not_connected = False
+            except:
+                traceback.print_exc()
+                await asyncio.sleep(1)
         await self.sio.wait()
 
     def emit(self, name, data=None):
@@ -33,6 +36,7 @@ class ThreadedSocketClient():
         task2 = loop.create_task(self._emitTaskMethod())
         loop.run_until_complete(task1)
         loop.run_until_complete(task2)
+
     # task that checks eventQueue and triggers any events then sleeps
 
     async def _emitTaskMethod(self):

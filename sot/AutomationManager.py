@@ -11,6 +11,7 @@ class AutomationManager:
     def __init__(self):
         self.stop = False
         self.ship = "Brigantine"
+        self.holding = False
 
     def window_enumeration_handler(self, hwnd, top_windows):
         """
@@ -32,6 +33,13 @@ class AutomationManager:
             self.window_enumeration_handler,  # pylint: disable=c-extension-no-member
             top_windows,
         )
+
+        # first try to minimize the client window
+        for i in top_windows:
+            if "client.exe" in i[1].lower():
+                win32gui.ShowWindow(i[0], 6)
+                break
+
         for i in top_windows:
             if window in i[1].lower():
                 win32gui.ShowWindow(i[0], 5)  # pylint: disable=c-extension-no-member
@@ -222,9 +230,30 @@ class AutomationManager:
 
             if self.stop:
                 return
+
+        # Wait for 3 seconds so the stupid popup has time to load
+        await sio.emit("update_status", data="Waiting for the popup")
+        await asyncio.sleep(3)
+
+        # Check if the stupid popup is there, if it is, close it
+        try:
+            if pyautogui.locateOnScreen("img/stupid_popup_1.png", confidence=0.9):
+                keyboard.press_and_release("esc")
+                await asyncio.sleep(0.5)
+                print("Closed popup")
+        except pyautogui.ImageNotFoundException:
+            pass
+
+        try:
+            if pyautogui.locateOnScreen("img/stupid_popup_2.png", confidence=0.9):
+                keyboard.press_and_release("esc")
+                await asyncio.sleep(0.5)
+                print("Closed popup")
+        except pyautogui.ImageNotFoundException:
+            pass
+
         await sio.emit("update_status", data="Selecting gamemode")
 
-        await asyncio.sleep(3)
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("right")
@@ -320,3 +349,88 @@ class AutomationManager:
         await sio.emit("update_status", data="No longer stopping functions")
         await asyncio.sleep(2.5)
         await sio.emit("update_status", data="Pending...")
+
+    async def auto_hold(self, sio):
+        """
+        Function that enables the auto holding feature
+        """
+        await sio.emit("update_status", data="(AH) Waiting for hold requests.")
+        if self.holding:
+            await sio.emit("update_status", data="(AH) Already holding.")
+            await sio.emit("hold_request_ack", data="Already holding.")
+            return
+
+        self.holding = False
+
+    async def hold_request(self, sio):
+        """
+        Function that tells this pc to start holding a ship
+        """
+        if self.holding:
+            await sio.emit("update_status", data="(AH) Already holding.")
+            await sio.emit("hold_request_ack", data="Already holding.")
+            return
+
+        await sio.emit("update_status", data="(AH) Request Received.")
+        await sio.emit("hold_request_ack", data="Request Received.")
+        self.holding = True
+        await asyncio.sleep(20)
+        await sio.emit("update_status", data="(AH) Holding a ship.")
+
+    async def invite_request(self, sio, person_to_invite):
+        """
+        Function that invites a person to the crew
+        """
+        await sio.emit("update_status", data=f"Inviting {person_to_invite}")
+        self.activate_window("sea of thieves")
+        await asyncio.sleep(0.2)
+        #!! TODO: Disable AFK macro and wait for a bit at this point
+
+        print("Starting Xbox App")
+        keyboard.press_and_release("win")
+        await asyncio.sleep(2.5)
+        keyboard.write("xbox")
+        await asyncio.sleep(1.5)
+        keyboard.press_and_release("enter")
+        print("Xbox App Started")
+        await asyncio.sleep(30)
+        print("opening friends tab")
+        # 9 tabs to get to the friends tab #!! 11 on main pc
+        for i in range(9):
+            keyboard.press_and_release("tab")
+            await asyncio.sleep(0.5)
+        keyboard.press_and_release("enter")
+        print("Friends tab opened")
+        await asyncio.sleep(1)
+        print("searching for user")
+        # 2 tabs to get to the friend search bar
+        for i in range(2):
+            keyboard.press_and_release("tab")
+            await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
+        # enter name of friend
+        keyboard.write(person_to_invite)
+        await asyncio.sleep(2.5)
+        keyboard.press_and_release("enter")
+        print("User found")
+        await asyncio.sleep(6)
+        print("Getting to invite button")
+        # 5 tabs to get to user
+        for i in range(5):
+            keyboard.press_and_release("tab")
+            await asyncio.sleep(0.5)
+        # shift+f10 to emulate right click
+        keyboard.press_and_release("shift+f10")
+        await asyncio.sleep(1)
+        # do two reverse tabs
+        keyboard.press_and_release("shift+tab")
+        await asyncio.sleep(0.5)
+        keyboard.press_and_release("shift+tab")
+        await asyncio.sleep(0.5)
+        print("Inviting user")
+        keyboard.press_and_release("enter")
+        await asyncio.sleep(1)
+        print("User invited")
+        await sio.emit("update_status", data=f"Invited {person_to_invite}")
+
+        #!! TODO: Re-enable AFK macro at this point

@@ -20,6 +20,7 @@ class Client:
         self.ship_listbox = None
         self.status_label = None
         self.port = None
+        self.holding = False
 
 
 class ClientManager:
@@ -157,8 +158,10 @@ class Controller:
         self.client_manager = ClientManager()
         self.desired_port_mode = False
         self.desired_port = None
+        self.auto_hold_mode = False
         self.auto_spike_mode = False
         self.number_of_ships = None
+        self.person_to_invite = None
 
         self._change_region = StringVar(value="US East - Washington")
         region_combo_box = tk.Combobox(mainframe, textvariable=self._change_region)
@@ -276,6 +279,35 @@ class Controller:
         self.last_pressed_label = tk.Label(mainframe, text="Last pressed: None")
         self.last_pressed_label.grid(columnspan=4, row=106, sticky="WE")
 
+        start_auto_hold_function = tk.Button(
+            mainframe,
+            text="start auto hold function",
+            command=lambda: self.emit_client_event("auto_hold"),
+        )
+        start_auto_hold_function.grid(columnspan=4, row=107, sticky="WE")
+
+        self.auto_hold_label = tk.Label(mainframe, text="Auto hold: False")
+        self.auto_hold_label.grid(columnspan=4, row=108, sticky="WE")
+
+        simulate_hold_request_button = tk.Button(
+            mainframe,
+            text="simulate hold request",
+            command=lambda: self.start_hold_request(),
+        )
+        simulate_hold_request_button.grid(columnspan=4, row=109, sticky="WE")
+
+        self._person_to_invite = StringVar(value="person_to_invite")
+        invite_request_entry_person_to_invite = tk.Entry(mainframe, width=7, textvariable=self._person_to_invite)
+        invite_request_entry_person_to_invite.grid(column=2, row=110, sticky="WE")
+        invite_request_entry_person_to_invite.bind("<Return>", self.set_person_to_invite)
+
+        simulate_invite_request_button = tk.Button(
+            mainframe,
+            text="simulate invite request",
+            command=lambda: self.emit_invite_request(),
+        )
+        simulate_invite_request_button.grid(columnspan=4, row=111, sticky="WE")
+
         for child in mainframe.winfo_children():
             child.grid_configure(padx=5, pady=5)
 
@@ -299,6 +331,10 @@ class Controller:
             # remove the clients that are not in data
             for client in self.client_manager.clients.copy().items():
                 if client[0] not in data:
+                    # check if the client is holding a ship
+                    if client[1].holding:
+                        print(f"{client[0]} DISCONNECTED WHILE HOLDING A SHIP!!!!")
+                        # ! TODO: Add code to make alarm if client is holding a ship and disconnects
                     self.client_manager.remove_client(client[0])
 
             # update the client list
@@ -308,6 +344,8 @@ class Controller:
         def update_status(data):
             self.client_manager.set_client_status(data["client"], data["status"])
             self.client_manager.update_biggest_match(self.biggest_match_label)
+            all_clients_matched = True
+            all_client_ready = True
             if self.desired_port_mode and not self.desired_port is None:
                 client = self.client_manager.get_client(data["client"])
                 if isinstance(data["status"], int):
@@ -331,14 +369,27 @@ class Controller:
                 for client_name, client in self.client_manager.clients.items():
                     # check if all clients have a port
                     if client.port is None:
-                        return
-                for client_name, client in self.client_manager.clients.items():
-                    # if all clients have a port check if the biggest match is equal to or higher than the self.number_of_ships
-                    if self.client_manager.biggest_match >= int(self.number_of_ships):
-                        print(f"----------------------MATCH OF {self.number_of_ships} FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------")
-                    else:
-                        print(f"no match of {self.number_of_ships} found. Biggest match was with {self.client_manager.biggest_match} ships")
-                        self.emit_client_event("reset", client.name)
+                        all_clients_matched = False
+                    if client.status != "Ready":
+                        all_client_ready = False
+                if all_clients_matched:
+                    for client_name, client in self.client_manager.clients.items():
+                        # if all clients have a port check if the biggest match is equal to or higher than the self.number_of_ships
+                        if self.client_manager.biggest_match >= int(self.number_of_ships):
+                            print(f"----------------------MATCH OF {self.number_of_ships} FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------")
+                        else:
+                            print(f"no match of {self.number_of_ships} found. Biggest match was with {self.client_manager.biggest_match} ships")
+                            self.emit_client_event("reset", client.name)
+                if all_client_ready:
+                    self.emit_client_event("sail")
+
+        @self.sio.event()
+        def hold_request_ack(data):
+            client = self.client_manager.get_client(data["client"])
+            if client:
+                client.holding = True
+                print(f"{client.name} {client.holding}")
+                print(f"{client.name} is now holding")
 
     def change_region(self, *args):
         """
@@ -380,6 +431,13 @@ class Controller:
         self.number_of_ships = self._number_of_ships.get()
         print(f"Number of ships set to {self.number_of_ships}")
 
+    def set_person_to_invite(self, *args):
+        """
+        Set the person to invite to the value entered in the entry
+        """
+        self.person_to_invite = self._person_to_invite.get()
+        print(f"Person to invite set to {self.person_to_invite}")
+
     def emit_client_event(self, event, *args):
         """
         Emit an event to all clients
@@ -392,6 +450,41 @@ class Controller:
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
             self.client_manager.reset_clients()
+        if event == "auto_hold":
+            self.auto_hold_mode = not self.auto_hold_mode
+            self.auto_hold_label.config(text=f"Auto hold: {self.auto_hold_mode}")
+            if self.auto_hold_mode:
+                # disable the tick boxes
+                self._set_port_spike.set(False)
+                self._set_desired_port_mode.set(False)
+                self._set_auto_spike_mode.set(False)
+                # disable the entry fields
+                self._desired_port.set("")
+                self._number_of_ships.set("")
+                # disable the buttons
+
+    def start_hold_request(self):
+        """
+        Start a hold request
+        """
+        # get all the clients
+        active_clients = self.client_manager.get_active_clients()
+        # check if any client are holding
+        for client_name in active_clients:
+            client = self.client_manager.get_client(client_name)
+            if client.holding:
+                print(f"{client.name} is already holding")
+                continue
+            print(f"{client.name} is not holding")
+            break
+        self.emit_client_event("hold_request", client.name)
+
+    def emit_invite_request(self, *args):
+        """
+        Emit an invite request to the specific client
+        """
+        client = "sot1"
+        self.sio.emit("invite_request", {"person_to_invite": self.person_to_invite, "clients": client})
 
     def sort_client_list(self):
         """

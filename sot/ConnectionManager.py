@@ -12,7 +12,6 @@ import maxminddb as mmdb
 
 from .Region import region_from_name
 
-voice_bytes = b"\x17\xfe\xfd\x00\x01\x00\x00"
 join_bytes = b"\x00\xde\x51\xea\x05"
 
 
@@ -29,6 +28,7 @@ class ConnectionManager:
             self.packetQueue = queue.Queue()
             self.events = EventManager(events=["join"])
             self.disconnect = False
+            self.force_disconnect = False
             self.lastConnected = {"server": None, "time": 0}
             self.packetTasks = set()
 
@@ -78,6 +78,9 @@ class ConnectionManager:
             try:
                 packet = self._winDivert.recv()
                 try:
+                    if self.force_disconnect:
+                        print("Dropping packet")
+                        continue
                     if self.disconnect:
                         # wait for 30 seconds after last timeout
                         if monotonic_ns() - self.timeout > 5 * 1000000000:
@@ -104,11 +107,18 @@ class ConnectionManager:
                             else:
                                 print(f"prefered: {match['city']['names']['en']} | {packet.dst_addr}")
                     else:
-                        if packet.is_outbound and len(packet.payload) == 51 and packet.payload[0:4] == join_bytes[0:4]:
-                            self.events.join(packet.dst_addr, packet.dst_port)
-                            if self.portspike:
-                                self.disconnect = True
-                                self.timeout = monotonic_ns()
+                        if packet.is_outbound and len(packet.payload) == 120 and packet.payload[0:4] == join_bytes[0:4]:
+                            self.events.join(packet.dst_addr, packet.dst_port) #pylint: disable=no-member
+                                if self.portspike:
+                                    self.disconnect = True
+                                    self.timeout = monotonic_ns()
+                            #! Use this to determine whether sot has fucked with the join packet
+                            # write the entire packet and payload to a text file, append to it
+                            # with open("packet.txt", "a") as f:
+                            #     try:
+                            #         f.write(str(packet) + "\n")
+                            #     except UnicodeDecodeError:
+                            #         f.write(str(packet.payload) + "\n")  # Fallback to str if can't decode
 
                 except:
                     traceback.print_exc()
