@@ -107,11 +107,18 @@ class ConnectionManager:
                             else:
                                 print(f"prefered: {match['city']['names']['en']} | {packet.dst_addr}")
                     else:
-                        if packet.is_outbound and len(packet.payload) == 51 and packet.payload[0:4] == join_bytes[0:4]:
-                            self.events.join(packet.dst_addr, packet.dst_port)
-                            if self.portspike:
-                                self.disconnect = True
-                                self.timeout = monotonic_ns()
+                        if packet.is_outbound and len(packet.payload) == 120 and packet.payload[0:4] == join_bytes[0:4]:
+                            self.events.join(packet.dst_addr, packet.dst_port) #pylint: disable=no-member
+                                if self.portspike:
+                                    self.disconnect = True
+                                    self.timeout = monotonic_ns()
+                            #! Use this to determine whether sot has fucked with the join packet
+                            # write the entire packet and payload to a text file, append to it
+                            # with open("packet.txt", "a") as f:
+                            #     try:
+                            #         f.write(str(packet) + "\n")
+                            #     except UnicodeDecodeError:
+                            #         f.write(str(packet.payload) + "\n")  # Fallback to str if can't decode
 
                 except:
                     traceback.print_exc()
