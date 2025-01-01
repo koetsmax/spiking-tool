@@ -78,6 +78,19 @@ class SpikingServer:
                 room=self.controller,
             )
 
+        @self.sio.event
+        async def hold_request_ack(sid, data):
+            client = self.clients[sid].name if sid in self.clients else sid
+            await self.sio.emit(
+                "hold_request_ack",
+                data={"client": client, "status": data},
+                room=self.controller,
+            )
+
+        @self.sio.event
+        async def invite_request(sid, data):
+            await self.sio.emit("invite_request", data=data)
+
     def run(self):
         uvicorn.run(self.app, host="0.0.0.0", port=5000)
 

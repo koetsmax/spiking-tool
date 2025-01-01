@@ -176,6 +176,25 @@ async def main():
             if client == config_file["name"]:
                 await sota.stop_functions(sio)
 
+    @sio.event()
+    async def auto_hold(data):
+        for client in data:
+            if client == config_file["name"]:
+                await sota.auto_hold(sio)
+
+    @sio.event()
+    async def hold_request(data):
+        for client in data:
+            if client == config_file["name"]:
+                await sota.hold_request(sio)
+
+    @sio.event()
+    async def invite_request(data):
+        print(data)
+        if data["clients"] == config_file["name"]:
+            print("Inviting", data["person_to_invite"])
+            await sota.invite_request(sio, data["person_to_invite"])
+
     async def on_join(ip, port):
         try:
             global prev_port
