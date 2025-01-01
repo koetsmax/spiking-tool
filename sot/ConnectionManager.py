@@ -12,7 +12,6 @@ import maxminddb as mmdb
 
 from .Region import region_from_name
 
-voice_bytes = b"\x17\xfe\xfd\x00\x01\x00\x00"
 join_bytes = b"\x00\xde\x51\xea\x05"
 
 
