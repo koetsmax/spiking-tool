@@ -1,10 +1,13 @@
-import keyboard
-import win32gui
-import threading
-import pyautogui
 import asyncio
+
+import keyboard
+import pyautogui
 import pynput.mouse
-import pyscreeze
+import win32gui
+
+SOT_WINDOW_MATCH = "sea of thieves"
+IMAGE_CONFIDENCE = 0.9
+SCREEN_POLL_SECONDS = 0.5
 
 
 class AutomationManager:
@@ -14,9 +17,6 @@ class AutomationManager:
         self.holding = False
 
     def window_enumeration_handler(self, hwnd, top_windows):
-        """
-        Function that gets all the windows and adds them to a list
-        """
         top_windows.append(
             (
                 hwnd,
@@ -24,34 +24,84 @@ class AutomationManager:
             )
         )
 
-    def activate_window(self, window):
-        """
-        Function that tries to activate the Sea of Thieves window
-        """
+    def _find_sot_hwnd(self, window_match=SOT_WINDOW_MATCH):
         top_windows = []
         win32gui.EnumWindows(  # pylint: disable=c-extension-no-member
-            self.window_enumeration_handler,  # pylint: disable=c-extension-no-member
+            self.window_enumeration_handler,
             top_windows,
         )
+        for hwnd, title in top_windows:
+            if window_match in title.lower() and win32gui.IsWindowVisible(hwnd):  # pylint: disable=c-extension-no-member
+                return hwnd
+        return None
 
-        for i in top_windows:
-            if window in i[1].lower():
-                win32gui.ShowWindow(i[0], 5)  # pylint: disable=c-extension-no-member
-                keyboard.press_and_release("alt")
-                win32gui.SetForegroundWindow(i[0])  # pylint: disable=c-extension-no-member
-                break
+    def _get_game_region(self):
+        """Screen region (left, top, width, height) for the SoT window, or None."""
+        hwnd = self._find_sot_hwnd()
+        if not hwnd:
+            return None
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)  # pylint: disable=c-extension-no-member
+        width = right - left
+        height = bottom - top
+        if width <= 0 or height <= 0:
+            return None
+        return (left, top, width, height)
+
+    def locate_in_game(self, image_path, confidence=IMAGE_CONFIDENCE):
+        """Find template image within the game window (full screen if window not found)."""
+        region = self._get_game_region()
+        kwargs = {"confidence": confidence}
+        if region:
+            kwargs["region"] = region
+        return pyautogui.locateOnScreen(image_path, **kwargs)
+
+    def screen_visible(self, image_path, confidence=IMAGE_CONFIDENCE):
+        try:
+            return self.locate_in_game(image_path, confidence) is not None
+        except pyautogui.ImageNotFoundException:
+            return False
+
+    async def wait_for_screen(self, image_path, message=None, confidence=IMAGE_CONFIDENCE):
+        while True:
+            if self.screen_visible(image_path, confidence):
+                return True
+            if message:
+                print(message)
+            await asyncio.sleep(SCREEN_POLL_SECONDS)
+            if self.stop:
+                return False
+
+    async def wait_for_play_screen(self):
+        while True:
+            if self.screen_visible("img/play_screen.png"):
+                return True
+            if self.screen_visible("img/rejoin_prompt.png"):
+                await asyncio.sleep(0.5)
+                keyboard.press_and_release("esc")
+                print("Declined rejoin prompt")
+            print("Waiting for play screen")
+            await asyncio.sleep(SCREEN_POLL_SECONDS)
+            if self.stop:
+                return False
+
+    async def dismiss_popup_if_visible(self, image_path):
+        if self.screen_visible(image_path):
+            keyboard.press_and_release("esc")
+            await asyncio.sleep(0.5)
+            print("Closed popup")
+
+    def activate_window(self, window=SOT_WINDOW_MATCH):
+        hwnd = self._find_sot_hwnd(window)
+        if hwnd:
+            win32gui.ShowWindow(hwnd, 5)  # pylint: disable=c-extension-no-member
+            keyboard.press_and_release("alt")
+            win32gui.SetForegroundWindow(hwnd)  # pylint: disable=c-extension-no-member
 
     async def set_ship(self, sio, ship_type):
-        """
-        Function that sets the ship type
-        """
         self.ship = ship_type
         await sio.emit("update_status", data=f"Ship set to {self.ship}")
 
     async def launch_game(self, sio, leave):
-        """
-        Function that launches the game and gets the client to the set sail screen
-        """
         await sio.emit("update_status", data="Launching Game")
         keyboard.press_and_release("win")
         await asyncio.sleep(2.5)
@@ -61,27 +111,11 @@ class AutomationManager:
         await asyncio.sleep(1.5)
         await self.reset(sio, leave, portspiking=False)
 
-    async def sail(self, sio, portspike):
-        self.activate_window("sea of thieves")
+    async def sail(self, sio, _portspike):
+        self.activate_window()
         await asyncio.sleep(0.2)
         keyboard.press_and_release("enter")
         await sio.emit("update_status", data="Searching the seas")
-        # if not portspike:
-        #     while not pyautogui.locateOnScreen("img/loading.png", confidence=0.9):
-        #         await asyncio.sleep(0.5)
-        #         print("black screen not found")
-        #         if self.stop:
-        #             return
-
-        #     await sio.emit("update_status", data="Loading...")
-
-        #     while pyautogui.locateOnScreen("img/loading.png", confidence=0.9):
-        #         await asyncio.sleep(0.5)
-        #         print("black screen found")
-        #         if self.stop:
-        #             return
-        #     await sio.emit("update_status", data="Loaded")
-        #     print("loaded")
 
     async def rejoin_session(self, sio, portspiking, port):
         if not port:
@@ -93,34 +127,16 @@ class AutomationManager:
         await sio.emit("update_status", data="Rejoining session")
         await asyncio.sleep(0.5)
 
-        while True:
-            try:
-                if pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
-                    break
-            except pyautogui.ImageNotFoundException:
-                pass
-
-            await asyncio.sleep(0.5)
-            print("waiting for portspike client to connect")
-
-            if self.stop:
-                return
+        if not await self.wait_for_screen(
+            "img/portspike_connected.png", "waiting for portspike client to connect"
+        ):
+            return
 
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.3)
         await sio.emit("update_status", data="Awaiting rejoin prompt")
-        while True:
-            try:
-                if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
-                    break
-            except pyautogui.ImageNotFoundException:
-                pass
-
-            await asyncio.sleep(0.5)
-            print("waiting for rejoin prompt")
-
-            if self.stop:
-                return
+        if not await self.wait_for_screen("img/rejoin_prompt.png", "waiting for rejoin prompt"):
+            return
 
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.3)
@@ -129,125 +145,51 @@ class AutomationManager:
     async def reset(self, sio, leave, portspiking):
         if portspiking:
             await sio.emit("update_status", data="Awaiting connection")
-            while True:
-                try:
-                    if pyautogui.locateOnScreen("img/portspike_connected.png", confidence=0.9):
-                        break
-                except pyautogui.ImageNotFoundException:
-                    pass
-
-                await asyncio.sleep(0.5)
-                print("waiting for portspike client to connect")
-
-                if self.stop:
-                    return
+            if not await self.wait_for_screen(
+                "img/portspike_connected.png", "waiting for portspike client to connect"
+            ):
+                return
 
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
             await sio.emit("update_status", data="Awaiting rejoin prompt")
-            while True:
-                try:
-                    if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
-                        break
-                except pyautogui.ImageNotFoundException:
-                    pass
+            if not await self.wait_for_screen("img/rejoin_prompt.png", "waiting for rejoin prompt"):
+                return
 
-                await asyncio.sleep(0.5)
-                print("waiting for rejoin prompt")
-
-                if self.stop:
-                    return
             keyboard.press_and_release("esc")
         elif leave:
-            # Leave game
             await sio.emit("update_status", data="Leaving Game")
-            self.activate_window("sea of thieves")
+            self.activate_window()
             await asyncio.sleep(0.2)
             keyboard.press_and_release("esc")
             await asyncio.sleep(1.2)
-            keyboard.press_and_release("down")
-            await asyncio.sleep(0.3)
-            keyboard.press_and_release("down")
-            await asyncio.sleep(0.3)
-            keyboard.press_and_release("down")
-            await asyncio.sleep(0.3)
-            keyboard.press_and_release("down")
-            await asyncio.sleep(0.3)
-            keyboard.press_and_release("down")
-            await asyncio.sleep(0.3)
-            keyboard.press_and_release("down")
-            await asyncio.sleep(0.3)
-            keyboard.press_and_release("down")
-            await asyncio.sleep(0.3)
+            for _ in range(7):
+                keyboard.press_and_release("down")
+                await asyncio.sleep(0.3)
             keyboard.press_and_release("up")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
+
         if not portspiking:
-            # start game
-            while True:
-                try:
-                    if pyautogui.locateOnScreen("img/start_screen.png", confidence=0.9):
-                        break
-                except pyautogui.ImageNotFoundException:
-                    pass
-
-                print("Waiting for start screen")
-                await asyncio.sleep(0.5)
-
-                if self.stop:
-                    return
+            if not await self.wait_for_screen("img/start_screen.png", "Waiting for start screen"):
+                return
 
             await sio.emit("update_status", data="Starting Game")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
 
-        # start menuing
-        while True:
-            try:
-                if pyautogui.locateOnScreen("img/play_screen.png", confidence=0.9):
-                    break
-            except pyautogui.ImageNotFoundException:
-                pass
+        if not await self.wait_for_play_screen():
+            return
 
-            print("Waiting for play screen")
-            await asyncio.sleep(0.5)
-
-            try:
-                if pyautogui.locateOnScreen("img/rejoin_prompt.png", confidence=0.9):
-                    await asyncio.sleep(0.5)
-                    keyboard.press_and_release("esc")
-                    print("Declined rejoin prompt")
-            except pyautogui.ImageNotFoundException:
-                pass
-
-            if self.stop:
-                return
-
-        # Wait for 3 seconds so the stupid popup has time to load
         await sio.emit("update_status", data="Waiting for the popup")
         await asyncio.sleep(3)
 
-        # Check if the stupid popup is there, if it is, close it
-        try:
-            if pyautogui.locateOnScreen("img/stupid_popup_1.png", confidence=0.9):
-                keyboard.press_and_release("esc")
-                await asyncio.sleep(0.5)
-                print("Closed popup")
-        except pyautogui.ImageNotFoundException:
-            pass
-
-        try:
-            if pyautogui.locateOnScreen("img/stupid_popup_2.png", confidence=0.9):
-                keyboard.press_and_release("esc")
-                await asyncio.sleep(0.5)
-                print("Closed popup")
-        except pyautogui.ImageNotFoundException:
-            pass
+        await self.dismiss_popup_if_visible("img/stupid_popup_1.png")
+        await self.dismiss_popup_if_visible("img/stupid_popup_2.png")
 
         await sio.emit("update_status", data="Selecting gamemode")
-
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("right")
@@ -257,38 +199,21 @@ class AutomationManager:
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
 
-        # select ship
         print(self.ship)
         await sio.emit("update_status", data="Selecting ship")
         if self.ship == "Captaincy":
             keyboard.press_and_release("right")
             await asyncio.sleep(0.6)
-            while True:
-                try:
-                    if pyautogui.locateOnScreen("img/captaincy_available.png", confidence=0.9):
-                        break
-                except pyautogui.ImageNotFoundException:
-                    pass
-
-                print("Waiting for captaincy to load")
-                await asyncio.sleep(0.5)
-
-                if self.stop:
-                    return
+            if not await self.wait_for_screen(
+                "img/captaincy_available.png", "Waiting for captaincy to load"
+            ):
+                return
 
             keyboard.press_and_release("enter")
-            while True:
-                try:
-                    if pyautogui.locateOnScreen("img/ship_loaded.png", confidence=0.9):
-                        break
-                except pyautogui.ImageNotFoundException:
-                    pass
-
-                print("Waiting for captaincy ship to load")
-                await asyncio.sleep(0.5)
-
-                if self.stop:
-                    return
+            if not await self.wait_for_screen(
+                "img/ship_loaded.png", "Waiting for captaincy ship to load"
+            ):
+                return
         else:
             keyboard.press_and_release("enter")
 
@@ -304,28 +229,15 @@ class AutomationManager:
         await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
 
-        # get to set sail screen
-        while True:
-            try:
-                if pyautogui.locateOnScreen("img/sail_screen.png", confidence=0.9):
-                    break
-            except pyautogui.ImageNotFoundException:
-                pass
+        if not await self.wait_for_screen("img/sail_screen.png", "Waiting for sail screen"):
+            return
 
-            print("Waiting for sail screen")
-            await asyncio.sleep(0.5)
-
-            if self.stop:
-                return
         await sio.emit("update_status", data="Ready")
         print("waiting on set sail screen")
 
     async def kill_game(self, sio):
-        """
-        Function that kills the game
-        """
         await sio.emit("update_status", data="Killing Game")
-        self.activate_window("sea of thieves")
+        self.activate_window()
         await asyncio.sleep(0.2)
         mouse = pynput.mouse.Controller()
         mouse.click(pynput.mouse.Button.left, 2)
@@ -333,9 +245,6 @@ class AutomationManager:
         keyboard.press_and_release("alt+f4")
 
     async def stop_functions(self, sio):
-        """
-        Function that stops all running functions
-        """
         await sio.emit("update_status", data="Stopping functions")
         self.stop = True
         await asyncio.sleep(2.5)
@@ -345,9 +254,6 @@ class AutomationManager:
         await sio.emit("update_status", data="Pending...")
 
     async def auto_hold(self, sio):
-        """
-        Function that enables the auto holding feature
-        """
         await sio.emit("update_status", data="(AH) Waiting for hold requests.")
         if self.holding:
             await sio.emit("update_status", data="(AH) Already holding.")
@@ -357,9 +263,6 @@ class AutomationManager:
         self.holding = False
 
     async def hold_request(self, sio):
-        """
-        Function that tells this pc to start holding a ship
-        """
         if self.holding:
             await sio.emit("update_status", data="(AH) Already holding.")
             await sio.emit("hold_request_ack", data="Already holding.")
@@ -372,13 +275,9 @@ class AutomationManager:
         await sio.emit("update_status", data="(AH) Holding a ship.")
 
     async def invite_request(self, sio, person_to_invite):
-        """
-        Function that invites a person to the crew
-        """
         await sio.emit("update_status", data=f"Inviting {person_to_invite}")
-        self.activate_window("sea of thieves")
+        self.activate_window()
         await asyncio.sleep(0.2)
-        #!! TODO: Disable AFK macro and wait for a bit at this point
 
         print("Starting Xbox App")
         keyboard.press_and_release("win")
@@ -390,33 +289,28 @@ class AutomationManager:
         await asyncio.sleep(30)
         print("opening friends tab")
         # 9 tabs to get to the friends tab #!! 11 on main pc
-        for i in range(9):
+        for _ in range(9):
             keyboard.press_and_release("tab")
             await asyncio.sleep(0.5)
         keyboard.press_and_release("enter")
         print("Friends tab opened")
         await asyncio.sleep(1)
         print("searching for user")
-        # 2 tabs to get to the friend search bar
-        for i in range(2):
+        for _ in range(2):
             keyboard.press_and_release("tab")
             await asyncio.sleep(0.5)
         await asyncio.sleep(1)
-        # enter name of friend
         keyboard.write(person_to_invite)
         await asyncio.sleep(2.5)
         keyboard.press_and_release("enter")
         print("User found")
         await asyncio.sleep(6)
         print("Getting to invite button")
-        # 5 tabs to get to user
-        for i in range(5):
+        for _ in range(5):
             keyboard.press_and_release("tab")
             await asyncio.sleep(0.5)
-        # shift+f10 to emulate right click
         keyboard.press_and_release("shift+f10")
         await asyncio.sleep(1)
-        # do two reverse tabs
         keyboard.press_and_release("shift+tab")
         await asyncio.sleep(0.5)
         keyboard.press_and_release("shift+tab")
@@ -426,5 +320,3 @@ class AutomationManager:
         await asyncio.sleep(1)
         print("User invited")
         await sio.emit("update_status", data=f"Invited {person_to_invite}")
-
-        #!! TODO: Re-enable AFK macro at this point
