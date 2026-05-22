@@ -28,7 +28,7 @@ def get_config():
     except FileNotFoundError:
         config_file = tomlkit.document()
         config_file["name"] = input("Enter name of this client: ")
-        config_file["url"] = "http://spiker.famkoets.nl"
+        config_file["url"] = "http://ashen.spiker.famkoets.nl"
 
     with open("config.toml", "w", encoding="UTF=8") as f:
         f.write(tomlkit.dumps(config_file))

@@ -146,7 +146,7 @@ class Controller:
     """
 
     def __init__(self, root, sio=None):
-        self.sio = sio or ThreadedSocketClient(url="http://spiker.famkoets.nl", auth="Controller")
+        self.sio = sio or ThreadedSocketClient(url="http://ashen.spiker.famkoets.nl", auth="Controller")
         root.title("Controller script")
         root.option_add("*tearOff", FALSE)
         mainframe = tk.Frame(root, padding="3 3 12 12")
