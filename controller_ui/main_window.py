@@ -324,11 +324,15 @@ class ControllerWindow(QMainWindow):
             self.emit_client_event("hold_request", client.name)
 
     def emit_invite_request(self, *_args):
-        client = "sot1"
+        active_clients = self.client_manager.get_active_clients()
+        if not active_clients:
+            print("No active clients selected for invite request")
+            return
+        target_client = active_clients[0]
         self.person_to_invite = self.person_to_invite_entry.text()
         self.sio.emit(
             "invite_request",
-            {"person_to_invite": self.person_to_invite, "clients": client},
+            {"person_to_invite": self.person_to_invite, "clients": target_client},
         )
 
     def sort_client_list(self):
