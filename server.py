@@ -59,14 +59,20 @@ class SpikingServer:
 
         @self.sio.event
         async def join(sid, data):
+            game = f"{data['game_ip']}:{data['game_port']}"
+            management = f"{data['management_ip']}:{data['management_port']}"
             print(
                 f"Join from {self.clients[sid].name if sid in self.clients else sid}: "
-                f"{data['ip']}:{data['port']}"
+                f"game={game} management={management}"
             )
             client = self.clients[sid].name if sid in self.clients else sid
             await self.sio.emit(
                 "update_status",
-                data={"client": client, "status": data["port"]},
+                data={
+                    "client": client,
+                    "status": data["management_port"],
+                    "match": data,
+                },
                 room=self.controller,
             )
 

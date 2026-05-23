@@ -112,10 +112,10 @@ def register_client_handlers(
     async def fix_resolution(data):
         await run_if_selected(data, lambda: automation.report_game_resolution(sio))
 
-    async def on_join(ip, port):
+    async def on_join(match_data):
         try:
-            state.prev_port = int(port)
-            await sio.emit("join", {"ip": ip, "port": port})
+            state.prev_port = int(match_data["management_port"])
+            await sio.emit("join", match_data)
         except Exception:
             traceback.print_exc()
 

@@ -143,6 +143,13 @@ class ConnectionManager:
     def generate_match_id(self) -> str:
         return uuid.uuid4().hex
 
+    @staticmethod
+    def _parse_endpoint(endpoint: str) -> tuple[str, int]:
+        host, sep, port_str = endpoint.rpartition(":")
+        if not sep:
+            raise ValueError(f"Invalid endpoint: {endpoint!r}")
+        return host, int(port_str)
+
     def forget_last_match(self):
         """Clear match detection state so the next management server emits join again."""
         with self._match_state_lock:
@@ -292,7 +299,22 @@ class ConnectionManager:
 
             if emit_join:
                 try:
-                    self.events.join(addr, port)  # pylint: disable=no-member
+                    with self._match_state_lock:
+                        game_endpoint = self._match_game_server
+                    if game_endpoint is None:
+                        raise RuntimeError("Management server matched without game server")
+                    game_ip, game_port = self._parse_endpoint(game_endpoint)
+                    game_location = self.resolve_location(game_ip)
+                    region = self.build_display_location(game_location)
+                    self.events.join(  # pylint: disable=no-member
+                        {
+                            "game_ip": game_ip,
+                            "game_port": game_port,
+                            "management_ip": addr,
+                            "management_port": port,
+                            "region": region,
+                        }
+                    )
                 except Exception:
                     traceback.print_exc()
                 if self.portspike:

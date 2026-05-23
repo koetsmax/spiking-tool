@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QLabel, QCheckBox, QComboBox, QWidget
 
     from controller_ui.client_columns import MetricState
+    from spiking_tool.match import MatchDetails
 
 
 class Client:
@@ -20,6 +21,7 @@ class Client:
         self.ship_combo: Optional[QComboBox] = None
         self.status_label: Optional[QLabel] = None
         self.port: Optional[str] = None
+        self.match: Optional["MatchDetails"] = None
         self.holding = False
 
 
@@ -41,12 +43,17 @@ class ClientManager:
     def get_client(self, name: str) -> Optional[Client]:
         return self.clients.get(name)
 
-    def set_client_status(self, name: str, status) -> None:
+    def set_client_status(self, name: str, status, match=None) -> None:
+        from controller_ui.client_columns import ClickableStatusLabel
+        from spiking_tool.match import MatchDetails
         from spiking_tool.ports import format_client_status
 
         client = self.get_client(name)
         if not client:
             return
+
+        if match is not None:
+            client.match = MatchDetails.from_payload(match)
 
         display_status, port = format_client_status(status, client.port)
         if port is not None:
@@ -54,6 +61,8 @@ class ClientManager:
         client.status = display_status
         if client.status_label:
             client.status_label.setText(str(client.status))
+            if isinstance(client.status_label, ClickableStatusLabel):
+                client.status_label.update_match_style()
 
     def set_client_metric(self, name: str, metric: str, state: "MetricState") -> None:
         from controller_ui.client_columns import refresh_client_metrics
@@ -94,6 +103,7 @@ class ClientManager:
     def reset_clients(self) -> None:
         for client in self.clients.values():
             client.port = None
+            client.match = None
 
     def get_biggest_match(self) -> Optional[int]:
         return self.biggest_match

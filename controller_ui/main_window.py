@@ -523,9 +523,14 @@ class ControllerWindow(QMainWindow):
                 client = self.client_manager.get_client(client_name)
                 if client:
                     client.port = None
+                    client.match = None
                     client.status = "Pending..."
                     if client.status_label:
                         client.status_label.setText(client.status)
+                        from controller_ui.client_columns import ClickableStatusLabel
+
+                        if isinstance(client.status_label, ClickableStatusLabel):
+                            client.status_label.update_match_style()
             self.client_manager.update_biggest_match(self.biggest_match_label)
 
     def start_hold_request(self):

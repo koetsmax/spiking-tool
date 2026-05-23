@@ -31,7 +31,11 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
 
     @controller.sio.event()
     def update_status(data):
-        controller.client_manager.set_client_status(data["client"], data["status"])
+        controller.client_manager.set_client_status(
+            data["client"],
+            data["status"],
+            match=data.get("match"),
+        )
         controller.client_manager.update_biggest_match(controller.biggest_match_label)
         controller.handle_automation_status(data)
 

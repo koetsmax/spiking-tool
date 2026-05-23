@@ -6,7 +6,9 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Literal, Optional
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QHeaderView,
@@ -188,6 +190,32 @@ class ShipColumn(ClientColumnSpec):
         table.setCellWidget(row, column_index, combo)
 
 
+class ClickableStatusLabel(QLabel):
+    """Status cell label; copies match details to the clipboard when a match is set."""
+
+    def __init__(self, client: "Client") -> None:
+        super().__init__()
+        self._client = client
+
+    def update_match_style(self) -> None:
+        if self._client.match is not None:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.setToolTip("Click to copy match details")
+            self.setStyleSheet("color: #89b4fa; text-decoration: underline;")
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            self.setToolTip("")
+            self.setStyleSheet("")
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._client.match is not None
+        ):
+            QApplication.clipboard().setText(self._client.match.to_clipboard_text())
+        super().mousePressEvent(event)
+
+
 class StatusColumn(ClientColumnSpec):
     def __init__(self) -> None:
         super().__init__("status", "Status")
@@ -197,9 +225,11 @@ class StatusColumn(ClientColumnSpec):
 
     def populate(self, table, row, column_index, client, window) -> None:
         del window
-        label = QLabel(client.status)
+        label = ClickableStatusLabel(client)
+        label.setText(client.status)
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        label.update_match_style()
         client.status_label = label
         container = QWidget()
         layout = QHBoxLayout(container)
