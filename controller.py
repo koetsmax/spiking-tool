@@ -1,160 +1,228 @@
-from tkinter import *
-from tkinter import ttk as tk
+import sys
+import traceback
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QSizePolicy,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
 from sot.Region import core_regions
 from threadedsio import ThreadedSocketClient
-import traceback
+
+DARK_STYLESHEET = """
+QMainWindow, QWidget {
+    background-color: #1e1e2e;
+    color: #cdd6f4;
+    font-size: 13px;
+}
+QTabWidget::pane {
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    background-color: #181825;
+}
+QTabBar::tab {
+    background-color: #313244;
+    color: #a6adc8;
+    padding: 8px 16px;
+    margin-right: 2px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+}
+QTabBar::tab:selected {
+    background-color: #45475a;
+    color: #cdd6f4;
+}
+QPushButton {
+    background-color: #89b4fa;
+    color: #1e1e2e;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-weight: 600;
+}
+QPushButton:hover { background-color: #b4befe; }
+QPushButton:pressed { background-color: #74c7ec; }
+QComboBox, QLineEdit {
+    background-color: #313244;
+    color: #cdd6f4;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+QComboBox::drop-down { border: none; }
+QCheckBox { spacing: 8px; }
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid #585b70;
+    background-color: #313244;
+}
+QCheckBox::indicator:checked {
+    background-color: #a6e3a1;
+    border-color: #a6e3a1;
+}
+QScrollArea {
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    background-color: #181825;
+}
+QLabel#sectionTitle {
+    font-size: 14px;
+    font-weight: 600;
+    color: #89b4fa;
+}
+QLabel#biggestMatch {
+    background-color: #313244;
+    border-radius: 6px;
+    padding: 8px;
+}
+QFrame#clientsPanel {
+    background-color: #181825;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+}
+QTableWidget {
+    background-color: #181825;
+    alternate-background-color: #1e1e2e;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    gridline-color: #313244;
+}
+QTableWidget::item {
+    padding: 4px 8px;
+}
+QHeaderView::section {
+    background-color: #313244;
+    color: #cdd6f4;
+    padding: 8px;
+    border: none;
+    font-weight: 600;
+}
+"""
 
 
 class Client:
-    """
-    Class to store information about a client
-    """
-
     def __init__(self, name):
         self.name = name
         self.ship_type = "Brigantine"
         self.status = "Pending..."
-        self.active = None
         self.active_checkbox = None
         self.name_label = None
-        self.ship_listbox = None
+        self.ship_combo = None
         self.status_label = None
         self.port = None
         self.holding = False
 
 
 class ClientManager:
-    """
-    Class to manage all of the clients
-    """
-
     def __init__(self):
         self.clients = {}
         self.biggest_match = None
 
     def add_client(self, name):
-        """
-        Add a client to the list of clients
-        """
-        client = Client(name)
-        self.clients[name] = client
+        self.clients[name] = Client(name)
 
     def get_active_clients(self):
-        """
-        Get a list of all of the active clients (clients with the active checkbox checked)
-        """
-        return [client for client in self.clients if self.clients[client].active.get()]
+        return [
+            name
+            for name, client in self.clients.items()
+            if client.active_checkbox and client.active_checkbox.isChecked()
+        ]
 
     def get_client(self, name):
-        """
-        Get a client by name
-        """
         return self.clients.get(name)
 
     def set_client_status(self, name, status):
-        """
-        Set the status of a client
-        """
         client = self.get_client(name)
-        # if the status is an int, set the last 3 numbers of the port to the status
+        if not client:
+            return
+
         if isinstance(status, int):
             status = int(str(status)[2:])
-            # if the status is less than 3 characters long. add 0's in front of it until it is 3 characters long
             if len(str(status)) < 3:
                 status = "0" * (3 - len(str(status))) + str(status)
             client.port = status
-        # check if the status contains "outpost=" and remove it
+
         if "outpost=" in str(status):
             location = str(status).replace("outpost=", "")
             status = f"{client.port} -- {location}"
 
-        if client:
-            client.status = status
-            client.status_label.configure(text=client.status)
+        client.status = status
+        if client.status_label:
+            client.status_label.setText(str(client.status))
 
     def remove_client(self, name):
-        """
-        Delete all of the gui elements associated with the client and remove it from the list
-        """
-
         if name in self.clients:
             del self.clients[name]
             print(f"Client {name} removed")
 
     def update_biggest_match(self, label):
-        """
-        Update the biggest match label
-        """
-        # dictionary to count the frequency of each port
         port_counts = {}
-
-        # iterate over all clients and update the port counts
         for client_name, client in self.clients.items():
             if client.port is not None:
                 port_counts[client.port] = port_counts.get(client.port, []) + [client_name]
 
-        # find the port with the most matches
         biggest_match = None
         for port, clients in port_counts.items():
             if biggest_match is None or len(clients) > len(port_counts[biggest_match]):
                 biggest_match = port
 
-        # format the output string
         if biggest_match:
             matching_clients = ", ".join(port_counts[biggest_match])
             num_matching_clients = len(port_counts[biggest_match])
-            label.configure(text=f"Biggest match is {num_matching_clients} with port: {biggest_match} and client(s): {matching_clients}")
+            label.setText(
+                f"Biggest match: {num_matching_clients} on port {biggest_match} "
+                f"({matching_clients})"
+            )
             self.biggest_match = num_matching_clients
         else:
-            label.configure(text="No matches found")
+            label.setText("No matches found")
+            self.biggest_match = None
 
     def reset_clients(self):
-        """
-        Reset all of the client ports
-        """
-        for client_name, client in self.clients.items():
+        for client in self.clients.values():
             client.port = None
 
     def get_biggest_match(self):
-        """
-        Get the biggest match
-        """
         return self.biggest_match
 
     def sort_clients_by_name(self):
-        """
-        Sort the clients by name and reinitialize self.clients using the sorted list
-        """
-
         def get_numeric_part(key):
             return int(key[3:])
 
-        # Sort the dictionary items based on the numeric part of the keys
         self.clients = dict(sorted(self.clients.items(), key=lambda x: get_numeric_part(x[0])))
-
-        # Print the sorted clients
         for key, value in self.clients.items():
             print(f"{key}: {value}")
-        # print(self.clients.items())
-        # sorted_clients = sorted(self.clients.items())
-        # self.clients = dict(sorted_clients)
 
 
-class Controller:
-    """
-    Class to manage the controller gui
-    """
+class Controller(QMainWindow):
+    def __init__(self, sio=None):
+        super().__init__()
+        self.setWindowTitle("Spiking Tool — Controller")
+        self.resize(960, 520)
+        self.setMinimumSize(720, 400)
 
-    def __init__(self, root, sio=None):
-        self.sio = sio or ThreadedSocketClient(url="http://ashen.spiker.famkoets.nl", auth="Controller")
-        root.title("Controller script")
-        root.option_add("*tearOff", FALSE)
-        mainframe = tk.Frame(root, padding="3 3 12 12")
-        mainframe.grid(column=0, row=0, sticky="NWES")
-        root.columnconfigure(0, weight=1)
-        root.columnconfigure(1, weight=1)
-        root.columnconfigure(99, weight=1)
-        root.rowconfigure(0, weight=1)
+        self.sio = sio or ThreadedSocketClient(
+            url="http://ashen.spiker.famkoets.nl", auth="Controller"
+        )
         self.client_manager = ClientManager()
         self.desired_port_mode = False
         self.desired_port = None
@@ -163,156 +231,177 @@ class Controller:
         self.number_of_ships = None
         self.person_to_invite = None
 
-        self._change_region = StringVar(value="US East - Washington")
-        region_combo_box = tk.Combobox(mainframe, textvariable=self._change_region)
-        region_combo_box.grid(column=2, row=1, sticky="WE")
-        regions = list(core_regions.keys())
-        region_combo_box["values"] = regions
+        self._build_ui()
+        self._register_socket_events()
 
-        # Bind the ComboboxSelected event to the change_region function
-        region_combo_box.bind("<<ComboboxSelected>>", self.change_region)
+    def _build_ui(self):
+        central = QWidget()
+        self.setCentralWidget(central)
+        root_layout = QHBoxLayout(central)
+        root_layout.setContentsMargins(12, 12, 12, 12)
+        root_layout.setSpacing(12)
 
-        self._set_port_spike = BooleanVar(value=False)
-        portspike_checkbox = tk.Checkbutton(
-            mainframe,
-            variable=self._set_port_spike,
-            text="Port spike",
-            onvalue=1,
-            offvalue=0,
-            command=self.set_port_spike,
-        )
-        portspike_checkbox.grid(column=2, row=2, sticky="WE")
+        splitter = QSplitter(Qt.Horizontal)
+        root_layout.addWidget(splitter)
 
-        self._set_desired_port_mode = BooleanVar(value=False)
-        desired_port_mode_checkbox = tk.Checkbutton(
-            mainframe,
-            variable=self._set_desired_port_mode,
-            text="Desired port mode",
-            onvalue=1,
-            offvalue=0,
-            command=self.set_desired_port_mode,
-        )
-        desired_port_mode_checkbox.grid(column=2, row=4, sticky="WE")
+        # --- Left: control tabs ---
+        tabs = QTabWidget()
+        tabs.setDocumentMode(True)
+        tabs.addTab(self._build_manual_tab(), "Manual")
+        tabs.addTab(self._build_automated_tab(), "Automated")
+        tabs.addTab(self._build_debug_tab(), "Debug")
+        tabs.setMinimumWidth(320)
+        splitter.addWidget(tabs)
 
-        self._desired_port = StringVar(value="")
-        desired_port_entry = tk.Entry(mainframe, width=7, textvariable=self._desired_port)
-        desired_port_entry.grid(column=2, row=5, sticky="WE")
-        desired_port_entry.bind("<Return>", self.set_desired_port)
+        # --- Right: clients ---
+        clients_panel = QFrame()
+        clients_panel.setObjectName("clientsPanel")
+        clients_layout = QVBoxLayout(clients_panel)
+        clients_layout.setContentsMargins(12, 12, 12, 12)
 
-        self._set_auto_spike_mode = BooleanVar(value=False)
-        auto_spike_mode_checkbox = tk.Checkbutton(
-            mainframe,
-            variable=self._set_auto_spike_mode,
-            text="Auto spike mode",
-            onvalue=1,
-            offvalue=0,
-            command=self.set_auto_spike_mode,
-        )
-        auto_spike_mode_checkbox.grid(column=2, row=6, sticky="WE")
+        title = QLabel("Clients")
+        title.setObjectName("sectionTitle")
+        clients_layout.addWidget(title)
 
-        self._number_of_ships = StringVar(value="")
-        number_of_ships = tk.Entry(mainframe, width=7, textvariable=self._number_of_ships)
-        number_of_ships.grid(column=2, row=7, sticky="WE")
-        number_of_ships.bind("<Return>", self.set_number_of_ships)
+        self.biggest_match_label = QLabel("No matches found")
+        self.biggest_match_label.setObjectName("biggestMatch")
+        self.biggest_match_label.setWordWrap(True)
+        clients_layout.addWidget(self.biggest_match_label)
 
-        # Create a new frame for the list of clients
-        self.client_list_frame = tk.Frame(mainframe, padding="5 5 5 5")
-        self.client_list_frame.grid(columnspan=4, row=8, sticky="WE")
-        self.client_list_frame.columnconfigure(0, weight=1)
-        self.client_list_frame.columnconfigure(1, weight=1)
-        self.client_list_frame.columnconfigure(2, weight=1)
-        self.client_list_frame.columnconfigure(3, weight=1)
+        self.client_table = QTableWidget(0, 4)
+        self.client_table.setHorizontalHeaderLabels(["Active", "Instance", "Ship", "Status"])
+        self.client_table.verticalHeader().setVisible(False)
+        self.client_table.setShowGrid(False)
+        self.client_table.setSelectionMode(QTableWidget.NoSelection)
+        self.client_table.setFocusPolicy(Qt.NoFocus)
+        self.client_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.client_table.setAlternatingRowColors(True)
+        self._configure_client_table()
+        clients_layout.addWidget(self.client_table, stretch=1)
 
-        tk.Label(self.client_list_frame, text="Active").grid(column=0, row=0, sticky="WE")
-        tk.Label(self.client_list_frame, text="Instance").grid(column=1, row=0, sticky="WE")
-        tk.Label(self.client_list_frame, text="Ship type").grid(column=2, row=0, sticky="WE")
-        tk.Label(self.client_list_frame, text="Status").grid(column=3, row=0, sticky="WE")
+        splitter.addWidget(clients_panel)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([340, 520])
 
-        self.biggest_match_label = tk.Label(mainframe, text="No matches found")
-        self.biggest_match_label.grid(columnspan=4, row=99, sticky="WE")
+    def _configure_client_table(self):
+        header = self.client_table.horizontalHeader()
+        header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        header.setSectionResizeMode(0, QHeaderView.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.client_table.setColumnWidth(0, 56)
+        self.client_table.verticalHeader().setDefaultSectionSize(40)
 
-        launch_game_buton = tk.Button(
-            mainframe,
-            text="launch game",
-            command=lambda: self.emit_client_event("launch_game"),
-        )
-        launch_game_buton.grid(columnspan=4, row=100, sticky="WE")
+    def _centered_cell_widget(self, widget: QWidget) -> QWidget:
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.addStretch()
+        layout.addWidget(widget, 0, Qt.AlignCenter)
+        layout.addStretch()
+        return container
 
-        sail_button = tk.Button(mainframe, text="sail", command=lambda: self.emit_client_event("sail"))
-        sail_button.grid(columnspan=4, row=101, sticky="WE")
+    def _build_manual_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(10)
 
-        rejoin_session_button = tk.Button(
-            mainframe,
-            text="rejoin session",
-            command=lambda: self.emit_client_event("rejoin_session"),
-        )
-        rejoin_session_button.grid(columnspan=4, row=102, sticky="WE")
+        layout.addWidget(QLabel("Region"))
+        self.region_combo = QComboBox()
+        self.region_combo.addItems(list(core_regions.keys()))
+        self.region_combo.setCurrentText("US East - Washington")
+        self.region_combo.currentTextChanged.connect(self.change_region)
+        layout.addWidget(self.region_combo)
 
-        reset_button = tk.Button(
-            mainframe,
-            text="reset",
-            command=lambda: self.emit_client_event("reset"),
-        )
-        reset_button.grid(columnspan=4, row=103, sticky="WE")
+        self.portspike_checkbox = QCheckBox("Port spike")
+        self.portspike_checkbox.toggled.connect(self.set_port_spike)
+        layout.addWidget(self.portspike_checkbox)
 
-        kill_game_button = tk.Button(
-            mainframe,
-            text="kill game",
-            command=lambda: self.emit_client_event("kill_game"),
-        )
-        kill_game_button.grid(columnspan=4, row=104, sticky="WE")
+        layout.addWidget(self._section_label("Actions"))
+        for text, event in (
+            ("Launch game", "launch_game"),
+            ("Sail", "sail"),
+            ("Rejoin session", "rejoin_session"),
+            ("Reset", "reset"),
+            ("Kill game", "kill_game"),
+            ("Stop running functions", "stop_functions"),
+        ):
+            btn = QPushButton(text)
+            btn.clicked.connect(lambda checked=False, e=event: self.emit_client_event(e))
+            layout.addWidget(btn)
 
-        stop_functions_button = tk.Button(
-            mainframe,
-            text="stop running functions",
-            command=lambda: self.emit_client_event("stop_functions"),
-        )
-        stop_functions_button.grid(columnspan=4, row=105, sticky="WE")
+        self.last_pressed_label = QLabel("Last pressed: None")
+        self.last_pressed_label.setStyleSheet("color: #a6adc8;")
+        layout.addWidget(self.last_pressed_label)
+        layout.addStretch()
+        return tab
 
-        # sort_clients_button = tk.Button(
-        #     mainframe,
-        #     text="sort clients",
-        #     command=lambda: self.sort_client_list(),
-        # )
-        # sort_clients_button.grid(columnspan=4, row=106, sticky="WE")
+    def _build_automated_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(10)
 
-        self.last_pressed_label = tk.Label(mainframe, text="Last pressed: None")
-        self.last_pressed_label.grid(columnspan=4, row=106, sticky="WE")
+        layout.addWidget(self._section_label("Desired port"))
+        self.desired_port_mode_checkbox = QCheckBox("Desired port mode")
+        self.desired_port_mode_checkbox.toggled.connect(self.set_desired_port_mode)
+        layout.addWidget(self.desired_port_mode_checkbox)
 
-        start_auto_hold_function = tk.Button(
-            mainframe,
-            text="start auto hold function",
-            command=lambda: self.emit_client_event("auto_hold"),
-        )
-        start_auto_hold_function.grid(columnspan=4, row=107, sticky="WE")
+        self.desired_port_entry = QLineEdit()
+        self.desired_port_entry.setPlaceholderText("Port (e.g. 042)")
+        self.desired_port_entry.returnPressed.connect(self.set_desired_port)
+        layout.addWidget(self.desired_port_entry)
 
-        self.auto_hold_label = tk.Label(mainframe, text="Auto hold: False")
-        self.auto_hold_label.grid(columnspan=4, row=108, sticky="WE")
+        layout.addWidget(self._section_label("Auto spike"))
+        self.auto_spike_mode_checkbox = QCheckBox("Auto spike mode")
+        self.auto_spike_mode_checkbox.toggled.connect(self.set_auto_spike_mode)
+        layout.addWidget(self.auto_spike_mode_checkbox)
 
-        simulate_hold_request_button = tk.Button(
-            mainframe,
-            text="simulate hold request",
-            command=lambda: self.start_hold_request(),
-        )
-        simulate_hold_request_button.grid(columnspan=4, row=109, sticky="WE")
+        self.number_of_ships_entry = QLineEdit()
+        self.number_of_ships_entry.setPlaceholderText("Number of ships")
+        self.number_of_ships_entry.returnPressed.connect(self.set_number_of_ships)
+        layout.addWidget(self.number_of_ships_entry)
 
-        self._person_to_invite = StringVar(value="person_to_invite")
-        invite_request_entry_person_to_invite = tk.Entry(mainframe, width=7, textvariable=self._person_to_invite)
-        invite_request_entry_person_to_invite.grid(column=2, row=110, sticky="WE")
-        invite_request_entry_person_to_invite.bind("<Return>", self.set_person_to_invite)
+        layout.addWidget(self._section_label("Auto hold"))
+        auto_hold_btn = QPushButton("Start auto hold function")
+        auto_hold_btn.clicked.connect(lambda: self.emit_client_event("auto_hold"))
+        layout.addWidget(auto_hold_btn)
 
-        simulate_invite_request_button = tk.Button(
-            mainframe,
-            text="simulate invite request",
-            command=lambda: self.emit_invite_request(),
-        )
-        simulate_invite_request_button.grid(columnspan=4, row=111, sticky="WE")
+        self.auto_hold_label = QLabel("Auto hold: False")
+        layout.addWidget(self.auto_hold_label)
 
-        for child in mainframe.winfo_children():
-            child.grid_configure(padx=5, pady=5)
+        layout.addStretch()
+        return tab
 
-        root.eval(f"tk::PlaceWindow {root} center")
+    def _build_debug_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(10)
 
+        layout.addWidget(self._section_label("Hold"))
+        hold_btn = QPushButton("Simulate hold request")
+        hold_btn.clicked.connect(self.start_hold_request)
+        layout.addWidget(hold_btn)
+
+        layout.addWidget(self._section_label("Invite"))
+        self.person_to_invite_entry = QLineEdit("person_to_invite")
+        self.person_to_invite_entry.returnPressed.connect(self.set_person_to_invite)
+        layout.addWidget(self.person_to_invite_entry)
+
+        invite_btn = QPushButton("Simulate invite request")
+        invite_btn.clicked.connect(self.emit_invite_request)
+        layout.addWidget(invite_btn)
+
+        layout.addStretch()
+        return tab
+
+    def _section_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setObjectName("sectionTitle")
+        return label
+
+    def _register_socket_events(self):
         @self.sio.event()
         def client_connect(data):
             self.change_region()
@@ -322,35 +411,26 @@ class Controller:
             for client in data:
                 if client != "Controller" and client not in self.client_manager.clients:
                     self.client_manager.add_client(client)
-
-            # Create labels and listboxes for each client
             self.sort_client_list()
 
         @self.sio.event()
         def client_disconnect(data):
-            # remove the clients that are not in data
-            for client in self.client_manager.clients.copy().items():
-                if client[0] not in data:
-                    # check if the client is holding a ship
-                    if client[1].holding:
-                        print(f"{client[0]} DISCONNECTED WHILE HOLDING A SHIP!!!!")
-                        # ! TODO: Add code to make alarm if client is holding a ship and disconnects
-                    self.client_manager.remove_client(client[0])
-
-            # update the client list
+            for client_name, client in self.client_manager.clients.copy().items():
+                if client_name not in data:
+                    if client.holding:
+                        print(f"{client_name} DISCONNECTED WHILE HOLDING A SHIP!!!!")
+                    self.client_manager.remove_client(client_name)
             self.sort_client_list()
 
         @self.sio.event()
         def update_status(data):
             self.client_manager.set_client_status(data["client"], data["status"])
             self.client_manager.update_biggest_match(self.biggest_match_label)
-            all_clients_matched = True
-            all_client_ready = True
-            if self.desired_port_mode and not self.desired_port is None:
+
+            if self.desired_port_mode and self.desired_port is not None:
                 client = self.client_manager.get_client(data["client"])
                 if isinstance(data["status"], int):
                     status = int(str(data["status"])[2:])
-                    # if the status is less than 3 characters long. add 0's in front of it until it is 3 characters long
                     if len(str(status).strip()) < 3:
                         status = "0" * (3 - len(str(status))) + str(status)
                     if int(status) != int(self.desired_port.strip()):
@@ -358,27 +438,32 @@ class Controller:
                         self.emit_client_event("reset", client.name)
                     else:
                         print(f"----------------------MATCH FOUND: {client.name}----------------------")
-                        # disable desired port mode
                         self.desired_port_mode = False
                         self.desired_port = None
-
+                        self.desired_port_mode_checkbox.setChecked(False)
                 elif data["status"] == "Ready":
                     self.emit_client_event("sail", client.name)
-            elif self.auto_spike_mode and not self.number_of_ships is None:
-                # for every client check if the client.port is not None and get the biggest match. check if it is still possible to get the self.number_of_ships using total_clients, biggest_match and the self.number_of_ships
-                for client_name, client in self.client_manager.clients.items():
-                    # check if all clients have a port
+
+            elif self.auto_spike_mode and self.number_of_ships is not None:
+                all_clients_matched = True
+                all_client_ready = True
+                for client in self.client_manager.clients.values():
                     if client.port is None:
                         all_clients_matched = False
                     if client.status != "Ready":
                         all_client_ready = False
                 if all_clients_matched:
-                    for client_name, client in self.client_manager.clients.items():
-                        # if all clients have a port check if the biggest match is equal to or higher than the self.number_of_ships
+                    for client in self.client_manager.clients.values():
                         if self.client_manager.biggest_match >= int(self.number_of_ships):
-                            print(f"----------------------MATCH OF {self.number_of_ships} FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------")
+                            print(
+                                f"----------------------MATCH OF {self.number_of_ships} "
+                                f"FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------"
+                            )
                         else:
-                            print(f"no match of {self.number_of_ships} found. Biggest match was with {self.client_manager.biggest_match} ships")
+                            print(
+                                f"no match of {self.number_of_ships} found. "
+                                f"Biggest match was {self.client_manager.biggest_match} ships"
+                            )
                             self.emit_client_event("reset", client.name)
                 if all_client_ready:
                     self.emit_client_event("sail")
@@ -388,88 +473,53 @@ class Controller:
             client = self.client_manager.get_client(data["client"])
             if client:
                 client.holding = True
-                print(f"{client.name} {client.holding}")
                 print(f"{client.name} is now holding")
 
-    def change_region(self, *args):
-        """
-        Change the region of all clients to the region selected in the dropdown menu
-        """
-        self.sio.emit("region", self._change_region.get())
+    def change_region(self, *_args):
+        self.sio.emit("region", self.region_combo.currentText())
 
-    def set_port_spike(self):
-        """
-        Set the portspiking value of all clients to the value selected in the dropdown menu
-        """
-        self.sio.emit("portspiking", self._set_port_spike.get())
+    def set_port_spike(self, *_args):
+        self.sio.emit("portspiking", self.portspike_checkbox.isChecked())
 
-    def set_desired_port_mode(self):
-        """
-        Set the desired port mode of all clients to the value entered in the entry
-        """
-        self.desired_port_mode = self._set_desired_port_mode.get()
-        print(f"Desired port mode set to {self._set_desired_port_mode.get()}")
+    def set_desired_port_mode(self, checked=None):
+        self.desired_port_mode = self.desired_port_mode_checkbox.isChecked()
+        print(f"Desired port mode set to {self.desired_port_mode}")
 
-    def set_desired_port(self, *args):
-        """
-        Set the desired port of all clients to the value entered in the entry
-        """
-        self.desired_port = self._desired_port.get()
+    def set_desired_port(self, *_args):
+        self.desired_port = self.desired_port_entry.text()
         print(f"Desired port set to {self.desired_port}")
 
-    def set_auto_spike_mode(self):
-        """
-        Set the auto spike mode of all clients to the value entered in the entry
-        """
-        self.auto_spike_mode = self._set_auto_spike_mode.get()
-        print(f"Auto spike mode set to {self._set_auto_spike_mode.get()}")
+    def set_auto_spike_mode(self, checked=None):
+        self.auto_spike_mode = self.auto_spike_mode_checkbox.isChecked()
+        print(f"Auto spike mode set to {self.auto_spike_mode}")
 
-    def set_number_of_ships(self, *args):
-        """
-        Set the number of ships of all clients to the value entered in the entry
-        """
-        self.number_of_ships = self._number_of_ships.get()
+    def set_number_of_ships(self, *_args):
+        self.number_of_ships = self.number_of_ships_entry.text()
         print(f"Number of ships set to {self.number_of_ships}")
 
-    def set_person_to_invite(self, *args):
-        """
-        Set the person to invite to the value entered in the entry
-        """
-        self.person_to_invite = self._person_to_invite.get()
+    def set_person_to_invite(self, *_args):
+        self.person_to_invite = self.person_to_invite_entry.text()
         print(f"Person to invite set to {self.person_to_invite}")
 
     def emit_client_event(self, event, *args):
-        """
-        Emit an event to all clients
-        """
-        self.last_pressed_label.config(text=f"Last pressed: {event}")
-        if not args:
-            active_clients = self.client_manager.get_active_clients()
-        else:
-            active_clients = args
+        self.last_pressed_label.setText(f"Last pressed: {event}")
+        active_clients = list(args) if args else self.client_manager.get_active_clients()
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
             self.client_manager.reset_clients()
         if event == "auto_hold":
             self.auto_hold_mode = not self.auto_hold_mode
-            self.auto_hold_label.config(text=f"Auto hold: {self.auto_hold_mode}")
+            self.auto_hold_label.setText(f"Auto hold: {self.auto_hold_mode}")
             if self.auto_hold_mode:
-                # disable the tick boxes
-                self._set_port_spike.set(False)
-                self._set_desired_port_mode.set(False)
-                self._set_auto_spike_mode.set(False)
-                # disable the entry fields
-                self._desired_port.set("")
-                self._number_of_ships.set("")
-                # disable the buttons
+                self.portspike_checkbox.setChecked(False)
+                self.desired_port_mode_checkbox.setChecked(False)
+                self.auto_spike_mode_checkbox.setChecked(False)
+                self.desired_port_entry.clear()
+                self.number_of_ships_entry.clear()
 
     def start_hold_request(self):
-        """
-        Start a hold request
-        """
-        # get all the clients
         active_clients = self.client_manager.get_active_clients()
-        # check if any client are holding
+        client = None
         for client_name in active_clients:
             client = self.client_manager.get_client(client_name)
             if client.holding:
@@ -477,127 +527,96 @@ class Controller:
                 continue
             print(f"{client.name} is not holding")
             break
-        self.emit_client_event("hold_request", client.name)
+        if client:
+            self.emit_client_event("hold_request", client.name)
 
-    def emit_invite_request(self, *args):
-        """
-        Emit an invite request to the specific client
-        """
+    def emit_invite_request(self, *_args):
         client = "sot1"
-        self.sio.emit("invite_request", {"person_to_invite": self.person_to_invite, "clients": client})
+        self.person_to_invite = self.person_to_invite_entry.text()
+        self.sio.emit(
+            "invite_request",
+            {"person_to_invite": self.person_to_invite, "clients": client},
+        )
 
     def sort_client_list(self):
-        """
-        Sort the client list by the client name and re-create the client list
-        """
         self.client_manager.sort_clients_by_name()
         self.create_client_list()
 
     def create_client_list(self):
-        """
-        Create the client list
-        """
-        # remove all widgets in the client list frame
-        for widget in self.client_list_frame.winfo_children():
-            widget.destroy()
+        self.client_table.setRowCount(0)
+        ship_types = ["Sloop", "Brigantine", "Galleon", "Captaincy"]
 
-        # create the client list with the active checkbox, clients name, client ship, client status
-        ship_type_vars = {}
-        for i, client_name in enumerate(self.client_manager.clients):
+        for client_name in self.client_manager.clients:
             client = self.client_manager.get_client(client_name)
-            try:
-                checkbox_value = client.active.get()
-            except AttributeError:
-                checkbox_value = True
-            try:
-                ship_type = client.ship_type_var.get()  #  pylance: ignore[reportOptionalMemberAccess] # pylint: disable=no-member
-            except AttributeError:
-                ship_type = "Brigantine"
-            try:
-                status = client.status
-            except AttributeError:
-                status = "Pending..."
-            client.active_checkbox = None
+            row = self.client_table.rowCount()
+            self.client_table.insertRow(row)
+
+            was_checked = (
+                client.active_checkbox.isChecked() if client.active_checkbox else True
+            )
+            ship_type = client.ship_combo.currentText() if client.ship_combo else client.ship_type
+            status = client.status
+
+            active_checkbox = QCheckBox()
+            active_checkbox.setChecked(was_checked)
+            client.active_checkbox = active_checkbox
+            self.client_table.setCellWidget(row, 0, self._centered_cell_widget(active_checkbox))
+
+            name_item = QTableWidgetItem(client.name)
+            name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            self.client_table.setItem(row, 1, name_item)
             client.name_label = None
-            client.ship_listbox = None
-            client.status_label = None
-            if client.name_label is None:
-                print(f"Adding {client.name} to the GUI")
 
-                # create checkbox
-                client.active = BooleanVar(value=checkbox_value)
-                active_checkbox = tk.Checkbutton(
-                    self.client_list_frame,
-                    variable=client.active,
-                    onvalue=1,
-                    offvalue=0,
+            ship_combo = QComboBox()
+            ship_combo.addItems(ship_types)
+            ship_combo.setCurrentText(ship_type)
+            ship_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            client.ship_combo = ship_combo
+
+            def ship_type_changed(text, c=client):
+                c.ship_type = text
+                self.sio.emit(
+                    "change_ship",
+                    data={"client": c.name, "ship_type": text},
                 )
-                active_checkbox.grid(column=0, row=i + 1, sticky="WE")
 
-                client.active_checkbox = active_checkbox
+            ship_combo.currentTextChanged.connect(ship_type_changed)
+            self.client_table.setCellWidget(row, 2, ship_combo)
 
-                # Create client name label
-                name_label = tk.Label(self.client_list_frame, text=client.name)
-                name_label.grid(column=1, row=i + 1, sticky="WE")
+            status_label = QLabel(status)
+            status_label.setWordWrap(True)
+            status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            client.status_label = status_label
+            status_container = QWidget()
+            status_layout = QHBoxLayout(status_container)
+            status_layout.setContentsMargins(8, 0, 4, 0)
+            status_layout.addWidget(status_label, 1)
+            self.client_table.setCellWidget(row, 3, status_container)
 
-                client.name_label = name_label
+            print(f"Adding {client.name} to the GUI")
 
-                # Create client ship listbox
-                ship_type_var = StringVar(value=ship_type)
-                ship_listbox = tk.Combobox(
-                    self.client_list_frame,
-                    height=1,
-                    width=15,
-                    textvariable=ship_type_var,
-                )
-                ship_listbox.grid(column=2, row=i + 1, sticky="WE")
-                ship_listbox["values"] = [
-                    "Sloop",
-                    "Brigantine",
-                    "Galleon",
-                    "Captaincy",
-                ]
-
-                client.ship_type_var = ship_type_var
-                client.ship_listbox = ship_listbox
-
-                # Set up a callback to update the client's ship type when the user changes the ship_listbox
-                def ship_type_changed(event, client=client):
-                    client.ship_type = client.ship_type_var.get()
-                    self.sio.emit(
-                        "change_ship",
-                        data={
-                            "client": client.name,
-                            "ship_type": client.ship_type_var.get(),
-                        },
-                    )
-
-                ship_listbox.bind("<<ComboboxSelected>>", ship_type_changed)
-
-                # Save a reference to the StringVar in the dictionary
-                ship_type_vars[client_name] = ship_type_var
-
-                # Create client status label
-                status_label = tk.Label(self.client_list_frame, text=status)
-                status_label.grid(column=3, row=i + 1, sticky="WE")
-
-                client.status_label = status_label
-
-                for child in self.client_list_frame.winfo_children():
-                    child.grid_configure(padx=10, pady=5)
+        self.client_table.resizeColumnToContents(1)
 
 
-# Start the SocketIO client
+def apply_dark_theme(app: QApplication):
+    app.setStyle("Fusion")
+    app.setStyleSheet(DARK_STYLESHEET)
+
+
 if __name__ == "__main__":
     try:
-        root = Tk()
-        controller = Controller(root)
+        app = QApplication(sys.argv)
+        apply_dark_theme(app)
+        font = QFont("Segoe UI", 10)
+        app.setFont(font)
 
-        def events():
-            controller.sio.events.processEvents()
-            root.after(50, events)
+        window = Controller()
+        window.show()
 
-        events()
-        root.mainloop()
+        timer = QTimer()
+        timer.timeout.connect(window.sio.events.processEvents)
+        timer.start(50)
+
+        sys.exit(app.exec())
     except Exception:
         traceback.print_exc()
