@@ -13,13 +13,18 @@ import socketio
 import tomlkit
 from packaging import version
 
-import sot
+import logging
 
-VERSION = "2.4.0"
+import sot
+from client_handlers import ClientState, register_client_handlers
+from spiking_tool.remote_log import install_client_remote_logging
+from spiking_tool.win_console import hide_console_window
+
+VERSION = "3.0.0"
+logger = logging.getLogger(__name__)
 
 
 def get_config():
-    # read or create config.toml if it doesn't exist
     try:
         global config_file
         with open("config.toml", "r", encoding="UTF=8") as f:
@@ -28,7 +33,7 @@ def get_config():
     except FileNotFoundError:
         config_file = tomlkit.document()
         config_file["name"] = input("Enter name of this client: ")
-        config_file["url"] = "http://spiker.famkoets.nl"
+        config_file["url"] = "http://ashen.spiker.famkoets.nl"
 
     with open("config.toml", "w", encoding="UTF=8") as f:
         f.write(tomlkit.dumps(config_file))
@@ -36,174 +41,109 @@ def get_config():
     return config_file
 
 
+def _read_show_console_config() -> bool | None:
+    try:
+        with open("config.toml", "r", encoding="UTF=8") as f:
+            doc = tomlkit.parse(f.read())
+        if "show_console" in doc:
+            return bool(doc["show_console"])
+    except (FileNotFoundError, OSError, ValueError):
+        pass
+    return None
+
+
+def _show_console() -> bool:
+    env = os.environ.get("SPIKING_TOOL_SHOW_CONSOLE", "").lower()
+    if env in ("1", "true", "yes"):
+        return True
+    if env in ("0", "false", "no"):
+        return False
+    config_value = _read_show_console_config()
+    if config_value is not None:
+        return config_value
+    return False
+
+
 async def main():
-    print("checking for updates...")
-    # check for updates
-    request = requests.get("https://api.github.com/repos/koetsmax/spiking-tool/releases/latest", timeout=15)
+    install_client_remote_logging()
+    if not _show_console():
+        hide_console_window()
+
+    logger.info("Checking for updates...")
+    request = requests.get(
+        "https://api.github.com/repos/koetsmax/spiking-tool/releases/latest",
+        timeout=15,
+    )
     if request.status_code != 200:
-        print("Failed to check for updates. Error code:", request.status_code)
+        logger.warning("Failed to check for updates. Error code: %s", request.status_code)
     else:
         request_dictionary = request.json()
         online_version = request_dictionary["name"]
         if version.parse(VERSION) < version.parse(online_version):
-            url = f"https://github.com/koetsmax/spiking-tool/releases/download/{online_version}/Client.exe"  # pylint: disable=line-too-long
+            url = f"https://github.com/koetsmax/spiking-tool/releases/download/" f"{online_version}/Client.exe"
             download = requests.get(url, allow_redirects=True, timeout=30)
-            # overwrite the old exe with the new one
             with open("TempClient.exe", "wb") as f:
                 f.write(download.content)
-            print("Client updated. Restarting...")
-            # Exit the client and run the powershell script in the background to replace the exe
+            logger.info("Client updated. Restarting...")
             subprocess.Popen(["powershell.exe", "-File", "update.ps1"], shell=True)
             sys.exit(0)
+        logger.info("Client up to date")
 
-        else:
-            print("Client up-to-date...")
-
-    print("Starting Client...")
-    print("Launching afk macro...")
-    # start the exe
+    logger.info("Starting client...")
+    logger.info("Launching afk macro...")
     try:
         os.startfile("anti-afk-v2.exe")
-        print("afk macro launched...")
-    except Exception as e:
-        print("Failed to launch afk macro...", e)
+        logger.info("AFK macro launched")
+    except OSError as e:
+        logger.warning("Failed to launch afk macro: %s", e)
 
-    print("Checking database...")
-    # Check if database is up-to-date
-    SpikeToolTemp = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool")
-    if not os.path.exists(SpikeToolTemp):
-        os.makedirs(SpikeToolTemp)
+    logger.info("Checking database...")
+    spike_tool_temp = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool")
+    os.makedirs(spike_tool_temp, exist_ok=True)
 
-    mmdbFolder = os.path.join(SpikeToolTemp, "mmdb")
-    if not os.path.exists(mmdbFolder):
-        os.makedirs(mmdbFolder)
+    mmdb_folder = os.path.join(spike_tool_temp, "mmdb")
+    os.makedirs(mmdb_folder, exist_ok=True)
 
-    files = os.listdir(mmdbFolder)
-
+    files = os.listdir(mmdb_folder)
     timestamp = 0
-    if len(files) > 0:
-        if files[0].endswith(".mmdb"):
-            fName = files[0].split(".")[0]
-            try:
-                timestamp = int(fName)
-            except:
-                pass
+    if files and files[0].endswith(".mmdb"):
+        try:
+            timestamp = int(files[0].split(".")[0])
+        except (ValueError, TypeError):
+            pass
 
     if timestamp < (int(time.time()) - 86400):
-        print("Database out of date...")
-        print("Clearing database folder...")
-        for file in os.listdir(mmdbFolder):
+        logger.info("Database out of date")
+        for file in os.listdir(mmdb_folder):
             try:
-                os.remove(os.path.join(mmdbFolder, file))
-            except:
+                os.remove(os.path.join(mmdb_folder, file))
+            except OSError:
                 pass
 
-        print("Downloading new IP database...")
+        logger.info("Downloading new IP database...")
         fname = str(int(time.time())) + ".mmdb"
-        tarName = "mmdb.tar.gz"
-        defaultName = "GeoLite2-City.mmdb"
-        with open(os.path.join(mmdbFolder, tarName), "wb") as f:
-            with requests.get("https://ipdb.ashen.info") as r:
+        tar_name = "mmdb.tar.gz"
+        default_name = "GeoLite2-City.mmdb"
+        with open(os.path.join(mmdb_folder, tar_name), "wb") as f:
+            with requests.get("https://ipdb.ashen.info", timeout=60) as r:
                 f.write(r.content)
-        with tarfile.open(os.path.join(mmdbFolder, tarName)) as tar:
-            tar.extractall(mmdbFolder)
-        os.remove(os.path.join(mmdbFolder, tarName))
-        tempFolder = os.path.join(mmdbFolder, os.listdir(mmdbFolder)[0])
-        with open(os.path.join(tempFolder, defaultName), "rb") as f:
-            with open(os.path.join(mmdbFolder, fname), "wb") as on:
-                on.write(f.read())
-        shutil.rmtree(tempFolder)
-        print("Database updated...")
+        with tarfile.open(os.path.join(mmdb_folder, tar_name)) as tar:
+            tar.extractall(mmdb_folder)
+        os.remove(os.path.join(mmdb_folder, tar_name))
+        temp_folder = os.path.join(mmdb_folder, os.listdir(mmdb_folder)[0])
+        with open(os.path.join(temp_folder, default_name), "rb") as f:
+            with open(os.path.join(mmdb_folder, fname), "wb") as out:
+                out.write(f.read())
+        shutil.rmtree(temp_folder)
+        logger.info("Database updated")
     else:
-        print("Database already up-to-date...")
+        logger.info("Database already up to date")
 
     sio = socketio.AsyncClient()
-    sotc = sot.ConnectionManager()
-    sota = sot.AutomationManager()
-
+    connection = sot.ConnectionManager()
+    automation = sot.AutomationManager()
     config = get_config()
-
-    @sio.event()
-    async def region(data):
-        sotc.region = sot.region_from_name(data)
-        print(f"Region set to {sotc.region.city}")
-
-    @sio.event()
-    async def portspiking(data):
-        sotc.portspike = data
-        print(f"Portspiking set to {sotc.portspike}")
-
-    @sio.event()
-    async def client_ship(data):
-        for client in [data["client"]]:
-            if client == config_file["name"]:
-                await sota.set_ship(sio, data["ship_type"])
-
-    @sio.event()
-    async def launch_game(data):
-        for client in data:
-            if client == config_file["name"]:
-                await sota.launch_game(sio, leave=False)
-
-    @sio.event()
-    async def sail(data):
-        for client in data:
-            if client == config_file["name"]:
-                await sota.sail(sio, sotc.portspike)
-
-    @sio.event()
-    async def rejoin_session(data):
-        for client in data:
-            if client == config_file["name"]:
-                await sota.rejoin_session(sio, sotc.portspike, port=prev_port if prev_port else None)
-
-    @sio.event()
-    async def reset(data):
-        for client in data:
-            if client == config_file["name"]:
-                leave = True
-                await sota.reset(sio, leave, sotc.portspike)
-
-    @sio.event()
-    async def kill_game(data):
-        for client in data:
-            if client == config_file["name"]:
-                await sota.kill_game(sio)
-
-    @sio.event()
-    async def stop_functions(data):
-        for client in data:
-            if client == config_file["name"]:
-                await sota.stop_functions(sio)
-
-    @sio.event()
-    async def auto_hold(data):
-        for client in data:
-            if client == config_file["name"]:
-                await sota.auto_hold(sio)
-
-    @sio.event()
-    async def hold_request(data):
-        for client in data:
-            if client == config_file["name"]:
-                await sota.hold_request(sio)
-
-    @sio.event()
-    async def invite_request(data):
-        print(data)
-        if data["clients"] == config_file["name"]:
-            print("Inviting", data["person_to_invite"])
-            await sota.invite_request(sio, data["person_to_invite"])
-
-    async def on_join(ip, port):
-        try:
-            global prev_port
-            prev_port = int(port)
-            await sio.emit("join", {"ip": ip, "port": port})
-        except:
-            traceback.print_exc()
-
-    sotc.events.join += on_join  # pylint=disable=no-member
+    register_client_handlers(sio, config["name"], connection, automation, ClientState())
 
     auth = {"name": config["name"], "type": "client"}
 
@@ -213,16 +153,44 @@ async def main():
             await sio.wait()
         except socketio.exceptions.ConnectionError:
             pass
-        except:
+        except Exception:
             traceback.print_exc()
+
+
+def _running_frozen() -> bool:
+    return getattr(sys, "frozen", False)
 
 
 if __name__ == "__main__":
     if pyuac.isUserAdmin():
         try:
             asyncio.run(main())
-        except:  # pylint: disable=bare-except
+        except Exception:
             traceback.print_exc()
-    else:
-        pyuac.runAsAdmin(wait=False)
+    elif _running_frozen():
+        # Packaged Client.exe — elevation target is the built binary, not venv python.
+        try:
+            pyuac.runAsAdmin(wait=False)
+        except Exception as exc:
+            if getattr(exc, "winerror", None) == 1223:
+                print(
+                    "Admin elevation was blocked or canceled.\n"
+                    "Right-click Client.exe and choose Run as administrator.",
+                    file=sys.stderr,
+                )
+            else:
+                raise
         sys.exit(0)
+    else:
+        print(
+            "This client must run as Administrator (WinDivert packet capture).\n"
+            "Windows often blocks auto-elevation of python.exe as a false positive.\n\n"
+            "Do this instead:\n"
+            "  1. Double-click run_client_admin.bat in the project folder\n"
+            "  2. Or open PowerShell as Administrator, then:\n"
+            "       .\\.venv\\Scripts\\Activate.ps1\n"
+            "       py client.py\n\n"
+            "If Defender still blocks it, run defender_exclusions.ps1 once from admin PowerShell.",
+            file=sys.stderr,
+        )
+        sys.exit(1)

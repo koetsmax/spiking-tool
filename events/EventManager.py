@@ -46,7 +46,7 @@ class EventManager:
             self.asyncd = asyncd
             if self.asyncd:
                 self._eventTask = asyncio.create_task(self._eventTaskMethod())
-        except:
+        except Exception:
             traceback.print_exc()
 
     # task that checks eventQueue and triggers any events then sleeps
@@ -54,22 +54,20 @@ class EventManager:
         while True:
             try:
                 while event := self.eventQueue.get(block=False):
-                    print(event)
                     self.events[event[0]].trigger(*event[1][0], **event[1][1])
             except queue.Empty:
                 pass
-            except:
+            except Exception:
                 traceback.print_exc()
             await asyncio.sleep(0.1)
 
     def processEvents(self):
         try:
             while event := self.eventQueue.get(block=False):
-                print(event)
                 self.events[event[0]].trigger(*event[1][0], **event[1][1])
         except queue.Empty:
             pass
-        except:
+        except Exception:
             traceback.print_exc()
 
     # add event to eventManager as attribute

@@ -1,0 +1,280 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from dataclasses import dataclass
+from typing import Awaitable, Callable, Literal, Optional, Tuple
+
+import keyboard
+import pyautogui
+import win32con
+import win32gui
+
+logger = logging.getLogger(__name__)
+
+SOT_WINDOW_MATCH = "sea of thieves"
+IMAGE_CONFIDENCE = 0.9
+SCREEN_POLL_SECONDS = 0.5
+PROMO_VIDEO_SKIP_SECONDS = 30.0
+PROMO_VIDEO_ESC_GAP_SECONDS = 0.5
+TARGET_CLIENT_WIDTH = 800
+TARGET_CLIENT_HEIGHT = 600
+
+GameRegion = Tuple[int, int, int, int]
+
+ResolutionStatus = Literal["ok", "resized", "failed", "no_window"]
+
+
+@dataclass(frozen=True)
+class ResolutionCheckResult:
+    status: ResolutionStatus
+    width: int = 0
+    height: int = 0
+    previous_width: int = 0
+    previous_height: int = 0
+
+    @property
+    def status_message(self) -> str:
+        if self.status == "ok":
+            return "Resolution OK (800x600)"
+        if self.status == "resized":
+            return (
+                f"Resized to 800x600 (was {self.previous_width}x{self.previous_height})"
+            )
+        if self.status == "no_window":
+            return "SoT window not found"
+        return f"Wrong resolution {self.width}x{self.height} (need 800x600)"
+
+
+class GameScreenMatcher:
+    """Template matching and window focus helpers scoped to the SoT game window."""
+
+    def __init__(self, should_stop: Optional[Callable[[], bool]] = None) -> None:
+        self._should_stop = should_stop or (lambda: False)
+
+    @staticmethod
+    def _window_enumeration_handler(hwnd, top_windows) -> None:
+        top_windows.append((hwnd, win32gui.GetWindowText(hwnd)))  # pylint: disable=c-extension-no-member
+
+    def find_sot_hwnd(self, window_match: str = SOT_WINDOW_MATCH):
+        top_windows = []
+        win32gui.EnumWindows(self._window_enumeration_handler, top_windows)  # pylint: disable=c-extension-no-member
+        for hwnd, title in top_windows:
+            if window_match in title.lower() and win32gui.IsWindowVisible(hwnd):  # pylint: disable=c-extension-no-member
+                return hwnd
+        return None
+
+    @staticmethod
+    def get_client_size(hwnd) -> Tuple[int, int]:
+        left, top, right, bottom = win32gui.GetClientRect(hwnd)  # pylint: disable=c-extension-no-member
+        return right - left, bottom - top
+
+    @staticmethod
+    def _outer_size_for_client(hwnd, client_width: int, client_height: int) -> Tuple[int, int]:
+        """Map desired client size to outer window size using current window chrome."""
+        window_left, window_top, window_right, window_bottom = win32gui.GetWindowRect(hwnd)  # pylint: disable=c-extension-no-member
+        client_left, client_top, client_right, client_bottom = win32gui.GetClientRect(hwnd)  # pylint: disable=c-extension-no-member
+        screen_left, screen_top = win32gui.ClientToScreen(hwnd, (client_left, client_top))  # pylint: disable=c-extension-no-member
+        screen_right, screen_bottom = win32gui.ClientToScreen(hwnd, (client_right, client_bottom))  # pylint: disable=c-extension-no-member
+        chrome_width = (window_right - window_left) - (screen_right - screen_left)
+        chrome_height = (window_bottom - window_top) - (screen_bottom - screen_top)
+        return client_width + chrome_width, client_height + chrome_height
+
+    def check_target_resolution(
+        self,
+        target_width: int = TARGET_CLIENT_WIDTH,
+        target_height: int = TARGET_CLIENT_HEIGHT,
+    ) -> ResolutionCheckResult:
+        hwnd = self.find_sot_hwnd()
+        if not hwnd:
+            return ResolutionCheckResult(status="no_window")
+
+        width, height = self.get_client_size(hwnd)
+        if width == target_width and height == target_height:
+            return ResolutionCheckResult(status="ok", width=width, height=height)
+        return ResolutionCheckResult(
+            status="failed",
+            width=width,
+            height=height,
+        )
+
+    def ensure_target_resolution(
+        self,
+        target_width: int = TARGET_CLIENT_WIDTH,
+        target_height: int = TARGET_CLIENT_HEIGHT,
+    ) -> ResolutionCheckResult:
+        check = self.check_target_resolution(target_width, target_height)
+        if check.status in ("ok", "no_window"):
+            return check
+
+        hwnd = self.find_sot_hwnd()
+        assert hwnd is not None
+        width, height = check.width, check.height
+        previous_width, previous_height = width, height
+
+        def resize_window() -> Tuple[int, int]:
+            outer_width, outer_height = self._outer_size_for_client(
+                hwnd, target_width, target_height
+            )
+            win32gui.SetWindowPos(  # pylint: disable=c-extension-no-member
+                hwnd,
+                win32con.HWND_TOP,
+                0,
+                0,
+                outer_width,
+                outer_height,
+                win32con.SWP_SHOWWINDOW,
+            )
+            return self.get_client_size(hwnd)
+
+        width, height = resize_window()
+        if width == target_width and height == target_height:
+            logger.info(
+                "Resized SoT window from %sx%s to %sx%s",
+                previous_width,
+                previous_height,
+                width,
+                height,
+            )
+            return ResolutionCheckResult(
+                status="resized",
+                width=width,
+                height=height,
+                previous_width=previous_width,
+                previous_height=previous_height,
+            )
+
+        if width > target_width * 2 or height > target_height * 2:
+            logger.info(
+                "Client area %sx%s looks fullscreen; toggling with Alt+Enter before resize",
+                width,
+                height,
+            )
+            keyboard.press_and_release("alt+enter")
+            time.sleep(2.0)
+            width, height = resize_window()
+
+        if width == target_width and height == target_height:
+            logger.info(
+                "Resized SoT window from %sx%s to %sx%s (after leaving fullscreen)",
+                previous_width,
+                previous_height,
+                width,
+                height,
+            )
+            return ResolutionCheckResult(
+                status="resized",
+                width=width,
+                height=height,
+                previous_width=previous_width,
+                previous_height=previous_height,
+            )
+
+        logger.warning(
+            "SoT window is %sx%s; expected %sx%s after resize attempt",
+            width,
+            height,
+            target_width,
+            target_height,
+        )
+        return ResolutionCheckResult(
+            status="failed",
+            width=width,
+            height=height,
+            previous_width=previous_width,
+            previous_height=previous_height,
+        )
+
+    def get_game_client_region(self) -> Optional[GameRegion]:
+        """Screen-space client area (matches 800x600 template captures)."""
+        hwnd = self.find_sot_hwnd()
+        if not hwnd:
+            return None
+        left, top, right, bottom = win32gui.GetClientRect(hwnd)  # pylint: disable=c-extension-no-member
+        width = right - left
+        height = bottom - top
+        if width <= 0 or height <= 0:
+            return None
+        screen_left, screen_top = win32gui.ClientToScreen(hwnd, (left, top))  # pylint: disable=c-extension-no-member
+        return (screen_left, screen_top, width, height)
+
+    def locate_in_game(self, image_path: str, confidence: float = IMAGE_CONFIDENCE):
+        region = self.get_game_client_region()
+        kwargs: dict = {"confidence": confidence}
+        if region:
+            kwargs["region"] = region
+        try:
+            return pyautogui.locateOnScreen(image_path, **kwargs)
+        except ValueError:
+            logger.warning(
+                "Template %s does not fit game client region %s (wrong resolution or fullscreen)",
+                image_path,
+                region,
+            )
+            return None
+
+    def screen_visible(self, image_path: str, confidence: float = IMAGE_CONFIDENCE) -> bool:
+        try:
+            return self.locate_in_game(image_path, confidence) is not None
+        except pyautogui.ImageNotFoundException:
+            return False
+
+    async def wait_for_screen(
+        self, image_path: str, message: Optional[str] = None, confidence: float = IMAGE_CONFIDENCE
+    ) -> bool:
+        while True:
+            if self.screen_visible(image_path, confidence):
+                return True
+            if message:
+                print(message)
+            await asyncio.sleep(SCREEN_POLL_SECONDS)
+            if self._should_stop():
+                return False
+
+    async def _dismiss_promo_video(self) -> None:
+        """Skip new-content promo videos (no stable image to match)."""
+        logger.info("No play screen after %.0fs; sending double Esc", PROMO_VIDEO_SKIP_SECONDS)
+        keyboard.press_and_release("esc")
+        await asyncio.sleep(PROMO_VIDEO_ESC_GAP_SECONDS)
+        keyboard.press_and_release("esc")
+
+    async def wait_for_play_screen(
+        self,
+        promo_skip_after_seconds: float = PROMO_VIDEO_SKIP_SECONDS,
+        on_promo_skipped: Optional[Callable[[], Awaitable[None]]] = None,
+    ) -> bool:
+        wait_started_at = time.monotonic()
+        promo_video_dismissed = False
+        while True:
+            if self.screen_visible("img/play_screen.png"):
+                return True
+            if self.screen_visible("img/rejoin_prompt.png"):
+                await asyncio.sleep(0.5)
+                keyboard.press_and_release("esc")
+                print("Declined rejoin prompt")
+            if (
+                not promo_video_dismissed
+                and time.monotonic() - wait_started_at >= promo_skip_after_seconds
+            ):
+                await self._dismiss_promo_video()
+                promo_video_dismissed = True
+                if on_promo_skipped:
+                    await on_promo_skipped()
+            print("Waiting for play screen")
+            await asyncio.sleep(SCREEN_POLL_SECONDS)
+            if self._should_stop():
+                return False
+
+    async def dismiss_popup_if_visible(self, image_path: str) -> None:
+        if self.screen_visible(image_path):
+            keyboard.press_and_release("esc")
+            await asyncio.sleep(0.5)
+            print("Closed popup")
+
+    def activate_window(self, window_match: str = SOT_WINDOW_MATCH) -> None:
+        hwnd = self.find_sot_hwnd(window_match)
+        if hwnd:
+            win32gui.ShowWindow(hwnd, 5)  # pylint: disable=c-extension-no-member
+            keyboard.press_and_release("alt")
+            win32gui.SetForegroundWindow(hwnd)  # pylint: disable=c-extension-no-member

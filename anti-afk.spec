@@ -1,34 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
-block_cipher = None
-
-
 a = Analysis(
-    ['client.py'],
+    ['anti-afk.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\Max\\Desktop\\spiking-tool\\afk\\v2\\anti-afk-v2.exe', 'anti-afk-v2.exe'), ('C:\\Users\\Max\\Desktop\\spiking-tool\\update.ps1', 'update.ps1')],
+    datas=[],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
+    optimize=0,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
-    name='client',
+    name='anti-afk',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

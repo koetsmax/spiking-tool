@@ -1,7 +1,7 @@
-spiker
 config.toml
-img
-SDK
+img/
+SDK/
+TempClient.exe
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
