@@ -58,6 +58,12 @@ class ConnectionManager:
             self._matchmaking_overrides = set()
             self._winDivert = None
             self._winMonitor = None
+            self._match_state_lock = threading.Lock()
+            self._match_game_server = None
+            self._match_management_server = None
+            self._match_id = None
+            self._match_last_gs_time = None
+            self._match_last_packet_time = None
 
             mmdb_folder = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "mmdb")
             self.mmlocation = os.path.join(mmdb_folder, os.listdir(mmdb_folder)[0])
@@ -137,6 +143,16 @@ class ConnectionManager:
     def generate_match_id(self) -> str:
         return uuid.uuid4().hex
 
+    def forget_last_match(self):
+        """Clear match detection state so the next management server emits join again."""
+        with self._match_state_lock:
+            self._match_game_server = None
+            self._match_management_server = None
+            self._match_id = None
+            self._match_last_gs_time = None
+            self._match_last_packet_time = None
+        print("Match state cleared — waiting for next management server")
+
     def _log_match(self, match_type: str, match_id: str, addr: str, port: int, display_location: str, match_text: str):
         print(f"[match:{match_type}] id={match_id} {addr}:{port} location={display_location}")
         for line in match_text.splitlines():
@@ -187,13 +203,6 @@ class ConnectionManager:
         First new public endpoint → game server (logged locally only).
         Second distinct endpoint within 20s → management server; emitted via join.
         """
-        game_server = None
-        management_server = None
-        match_id = None
-        last_gs_time = None
-        last_packet_time = None
-        match_text = ""
-
         while not self.is_stopped.is_set():
             try:
                 packet = self._winMonitor.recv()
@@ -233,46 +242,62 @@ class ConnectionManager:
 
             current = f"{addr}:{port}"
             now = time.monotonic()
+            emit_join = False
 
-            new_activity = (
-                current != game_server
-                and current != management_server
-            ) or last_packet_time is None or (now - last_packet_time) > MATCH_IDLE_SECONDS
+            with self._match_state_lock:
+                game_server = self._match_game_server
+                management_server = self._match_management_server
+                match_id = self._match_id
+                last_gs_time = self._match_last_gs_time
+                last_packet_time = self._match_last_packet_time
 
-            if new_activity:
-                if (
-                    management_server is not None
-                    or (game_server is None and management_server is None)
-                    or last_gs_time is None
-                    or (now - last_gs_time) > MATCH_IDLE_SECONDS
-                ):
-                    management_server = None
-                    match_id = self.generate_match_id()
-                    game_server = current
-                    last_gs_time = now
-                    match_type = "game"
-                    location = self.resolve_location(addr)
-                    display_location = self.build_display_location(location)
-                    match_text = f"Game server:\n{display_location}\n{game_server}"
-                    self._log_match(match_type, match_id, addr, port, display_location, match_text)
-                else:
-                    management_server = current
-                    match_type = "management"
-                    location = self.resolve_location(addr)
-                    display_location = self.build_display_location(location)
-                    match_text = (
-                        f"Management server:\n{display_location}\n{management_server}"
-                    )
-                    self._log_match(match_type, match_id, addr, port, display_location, match_text)
-                    try:
-                        self.events.join(addr, port)  # pylint: disable=no-member
-                    except Exception:
-                        traceback.print_exc()
-                    if self.portspike:
-                        self.disconnect = True
-                        self.timeout = monotonic_ns()
+                new_activity = (
+                    current != game_server
+                    and current != management_server
+                ) or last_packet_time is None or (now - last_packet_time) > MATCH_IDLE_SECONDS
 
-            last_packet_time = now
+                if new_activity:
+                    if (
+                        management_server is not None
+                        or (game_server is None and management_server is None)
+                        or last_gs_time is None
+                        or (now - last_gs_time) > MATCH_IDLE_SECONDS
+                    ):
+                        self._match_management_server = None
+                        match_id = self.generate_match_id()
+                        self._match_id = match_id
+                        self._match_game_server = current
+                        self._match_last_gs_time = now
+                        match_type = "game"
+                        location = self.resolve_location(addr)
+                        display_location = self.build_display_location(location)
+                        match_text = f"Game server:\n{display_location}\n{current}"
+                        self._log_match(
+                            match_type, match_id, addr, port, display_location, match_text
+                        )
+                    else:
+                        self._match_management_server = current
+                        match_type = "management"
+                        location = self.resolve_location(addr)
+                        display_location = self.build_display_location(location)
+                        match_text = (
+                            f"Management server:\n{display_location}\n{current}"
+                        )
+                        self._log_match(
+                            match_type, match_id, addr, port, display_location, match_text
+                        )
+                        emit_join = True
+
+                self._match_last_packet_time = now
+
+            if emit_join:
+                try:
+                    self.events.join(addr, port)  # pylint: disable=no-member
+                except Exception:
+                    traceback.print_exc()
+                if self.portspike:
+                    self.disconnect = True
+                    self.timeout = monotonic_ns()
             try:
                 self._winMonitor.send(packet)
             except Exception:

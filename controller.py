@@ -379,6 +379,11 @@ class Controller(QMainWindow):
         layout = QVBoxLayout(tab)
         layout.setSpacing(10)
 
+        layout.addWidget(self._section_label("Match"))
+        forget_match_btn = QPushButton("Forget last match")
+        forget_match_btn.clicked.connect(lambda: self.emit_client_event("forget_match"))
+        layout.addWidget(forget_match_btn)
+
         layout.addWidget(self._section_label("Hold"))
         hold_btn = QPushButton("Simulate hold request")
         hold_btn.clicked.connect(self.start_hold_request)
@@ -507,6 +512,15 @@ class Controller(QMainWindow):
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
             self.client_manager.reset_clients()
+        if event == "forget_match":
+            for client_name in active_clients:
+                client = self.client_manager.get_client(client_name)
+                if client:
+                    client.port = None
+                    client.status = "Pending..."
+                    if client.status_label:
+                        client.status_label.setText(client.status)
+            self.client_manager.update_biggest_match(self.biggest_match_label)
         if event == "auto_hold":
             self.auto_hold_mode = not self.auto_hold_mode
             self.auto_hold_label.setText(f"Auto hold: {self.auto_hold_mode}")

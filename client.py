@@ -120,6 +120,7 @@ async def main():
     sio = socketio.AsyncClient()
     sotc = sot.ConnectionManager()
     sota = sot.AutomationManager()
+    prev_port = None
 
     config = get_config()
 
@@ -195,9 +196,18 @@ async def main():
             print("Inviting", data["person_to_invite"])
             await sota.invite_request(sio, data["person_to_invite"])
 
+    @sio.event()
+    async def forget_match(data):
+        for client in data:
+            if client == config_file["name"]:
+                nonlocal prev_port
+                prev_port = None
+                sotc.forget_last_match()
+                print("Forgot last match — ready to detect management server again")
+
     async def on_join(ip, port):
         try:
-            global prev_port
+            nonlocal prev_port
             prev_port = int(port)
             await sio.emit("join", {"ip": ip, "port": port})
         except:
