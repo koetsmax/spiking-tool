@@ -41,8 +41,27 @@ def get_config():
     return config_file
 
 
+def _read_show_console_config() -> bool | None:
+    try:
+        with open("config.toml", "r", encoding="UTF=8") as f:
+            doc = tomlkit.parse(f.read())
+        if "show_console" in doc:
+            return bool(doc["show_console"])
+    except (FileNotFoundError, OSError, ValueError):
+        pass
+    return None
+
+
 def _show_console() -> bool:
-    return os.environ.get("SPIKING_TOOL_SHOW_CONSOLE", "").lower() in ("1", "true", "yes")
+    env = os.environ.get("SPIKING_TOOL_SHOW_CONSOLE", "").lower()
+    if env in ("1", "true", "yes"):
+        return True
+    if env in ("0", "false", "no"):
+        return False
+    config_value = _read_show_console_config()
+    if config_value is not None:
+        return config_value
+    return False
 
 
 async def main():
