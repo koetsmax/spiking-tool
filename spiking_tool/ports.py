@@ -27,8 +27,4 @@ def format_client_status(
         port = normalize_port_digits(status)
         display = port
 
-    if "outpost=" in str(display):
-        location = str(display).replace("outpost=", "")
-        display = f"{port} -- {location}"
-
     return str(display), port
