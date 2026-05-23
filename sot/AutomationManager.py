@@ -1,13 +1,9 @@
 import asyncio
 
 import keyboard
-import pyautogui
 import pynput.mouse
-import win32gui
 
-SOT_WINDOW_MATCH = "sea of thieves"
-IMAGE_CONFIDENCE = 0.9
-SCREEN_POLL_SECONDS = 0.5
+from .ui_automation import GameScreenMatcher
 
 
 class AutomationManager:
@@ -15,87 +11,19 @@ class AutomationManager:
         self.stop = False
         self.ship = "Brigantine"
         self.holding = False
+        self.screen = GameScreenMatcher(should_stop=lambda: self.stop)
 
-    def window_enumeration_handler(self, hwnd, top_windows):
-        top_windows.append(
-            (
-                hwnd,
-                win32gui.GetWindowText(hwnd),  # pylint: disable=c-extension-no-member
-            )
-        )
+    def activate_window(self):
+        self.screen.activate_window()
 
-    def _find_sot_hwnd(self, window_match=SOT_WINDOW_MATCH):
-        top_windows = []
-        win32gui.EnumWindows(  # pylint: disable=c-extension-no-member
-            self.window_enumeration_handler,
-            top_windows,
-        )
-        for hwnd, title in top_windows:
-            if window_match in title.lower() and win32gui.IsWindowVisible(hwnd):  # pylint: disable=c-extension-no-member
-                return hwnd
-        return None
-
-    def _get_game_region(self):
-        """Screen region (left, top, width, height) for the SoT window, or None."""
-        hwnd = self._find_sot_hwnd()
-        if not hwnd:
-            return None
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)  # pylint: disable=c-extension-no-member
-        width = right - left
-        height = bottom - top
-        if width <= 0 or height <= 0:
-            return None
-        return (left, top, width, height)
-
-    def locate_in_game(self, image_path, confidence=IMAGE_CONFIDENCE):
-        """Find template image within the game window (full screen if window not found)."""
-        region = self._get_game_region()
-        kwargs = {"confidence": confidence}
-        if region:
-            kwargs["region"] = region
-        return pyautogui.locateOnScreen(image_path, **kwargs)
-
-    def screen_visible(self, image_path, confidence=IMAGE_CONFIDENCE):
-        try:
-            return self.locate_in_game(image_path, confidence) is not None
-        except pyautogui.ImageNotFoundException:
-            return False
-
-    async def wait_for_screen(self, image_path, message=None, confidence=IMAGE_CONFIDENCE):
-        while True:
-            if self.screen_visible(image_path, confidence):
-                return True
-            if message:
-                print(message)
-            await asyncio.sleep(SCREEN_POLL_SECONDS)
-            if self.stop:
-                return False
+    async def wait_for_screen(self, image_path, message=None):
+        return await self.screen.wait_for_screen(image_path, message=message)
 
     async def wait_for_play_screen(self):
-        while True:
-            if self.screen_visible("img/play_screen.png"):
-                return True
-            if self.screen_visible("img/rejoin_prompt.png"):
-                await asyncio.sleep(0.5)
-                keyboard.press_and_release("esc")
-                print("Declined rejoin prompt")
-            print("Waiting for play screen")
-            await asyncio.sleep(SCREEN_POLL_SECONDS)
-            if self.stop:
-                return False
+        return await self.screen.wait_for_play_screen()
 
     async def dismiss_popup_if_visible(self, image_path):
-        if self.screen_visible(image_path):
-            keyboard.press_and_release("esc")
-            await asyncio.sleep(0.5)
-            print("Closed popup")
-
-    def activate_window(self, window=SOT_WINDOW_MATCH):
-        hwnd = self._find_sot_hwnd(window)
-        if hwnd:
-            win32gui.ShowWindow(hwnd, 5)  # pylint: disable=c-extension-no-member
-            keyboard.press_and_release("alt")
-            win32gui.SetForegroundWindow(hwnd)  # pylint: disable=c-extension-no-member
+        await self.screen.dismiss_popup_if_visible(image_path)
 
     async def set_ship(self, sio, ship_type):
         self.ship = ship_type
@@ -288,7 +216,6 @@ class AutomationManager:
         print("Xbox App Started")
         await asyncio.sleep(30)
         print("opening friends tab")
-        # 9 tabs to get to the friends tab #!! 11 on main pc
         for _ in range(9):
             keyboard.press_and_release("tab")
             await asyncio.sleep(0.5)
