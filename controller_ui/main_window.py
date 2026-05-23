@@ -34,7 +34,8 @@ class ControllerWindow(QMainWindow):
         self.setMinimumSize(720, 400)
 
         self.sio = sio or ThreadedSocketClient(
-            url="http://ashen.spiker.famkoets.nl", auth="Controller"
+            url="http://ashen.spiker.famkoets.nl",
+            auth={"name": "Controller", "type": "controller"},
         )
         self.client_manager = ClientManager()
         self.desired_port_mode = False

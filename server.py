@@ -2,35 +2,47 @@ import socketio
 import uvicorn
 
 
+def normalize_auth(auth, sid: str) -> dict:
+    if auth is None:
+        return {"name": sid, "type": "client"}
+    if isinstance(auth, str):
+        if auth == "Controller":
+            return {"name": "Controller", "type": "controller"}
+        return {"name": auth, "type": "client"}
+    if isinstance(auth, dict):
+        return {
+            "name": auth.get("name", sid),
+            "type": auth.get("type", "client"),
+        }
+    return {"name": sid, "type": "client"}
+
+
 class SpikingServer:
     class Client:
-        def __init__(self, sio, name="", type="client"):
-            self.sio = sio
+        def __init__(self, sid, name="", client_type="client"):
+            self.sio = sid
             self.name = name
-            self.type = type
+            self.type = client_type
 
     def __init__(self):
         self.sio = socketio.AsyncServer(async_mode="asgi")
         self.app = socketio.ASGIApp(self.sio)
         self.clients = {}
-        self.controller = False
+        self.controller = None
         self.region = None
 
         @self.sio.event
         async def connect(sid, environ, auth):
-            try:
-                self.clients[sid] = SpikingServer.Client(sid, auth["name"], auth["type"])
-            except TypeError:
-                self.clients[sid] = SpikingServer.Client(sid, auth)
-
-            if auth == "Controller":
+            parsed = normalize_auth(auth, sid)
+            self.clients[sid] = SpikingServer.Client(sid, parsed["name"], parsed["type"])
+            if parsed["type"] == "controller":
                 self.controller = sid
             await self.sio.enter_room(sid, self.clients[sid].type)
             client_names = [self.clients[client].name for client in self.clients]
             if self.controller:
                 await self.sio.emit("client_connect", data=client_names, room=self.controller)
 
-        @self.sio.event()
+        @self.sio.event
         async def disconnect(sid):
             if sid in self.clients:
                 print(f"Client {self.clients[sid].name} disconnected")
@@ -41,7 +53,10 @@ class SpikingServer:
 
         @self.sio.event
         async def join(sid, data):
-            print(f"Join from {self.clients[sid].name if sid in self.clients else sid}: {data['ip']}:{data['port']}")
+            print(
+                f"Join from {self.clients[sid].name if sid in self.clients else sid}: "
+                f"{data['ip']}:{data['port']}"
+            )
             client = self.clients[sid].name if sid in self.clients else sid
             await self.sio.emit(
                 "update_status",
