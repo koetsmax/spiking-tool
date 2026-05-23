@@ -32,8 +32,45 @@ QPushButton {
     padding: 8px 12px;
     font-weight: 600;
 }
-QPushButton:hover { background-color: #b4befe; }
-QPushButton:pressed { background-color: #74c7ec; }
+QPushButton:hover:enabled { background-color: #b4befe; }
+QPushButton:pressed:enabled { background-color: #74c7ec; }
+QPushButton:disabled {
+    background-color: #6e2c2c;
+    color: #cdd6f4;
+    border: 1px solid #f38ba8;
+}
+QPushButton#autoHoldToggleButton[autoHoldActive="false"] {
+    background-color: #6c7086;
+    color: #1e1e2e;
+    border: none;
+}
+QPushButton#autoHoldToggleButton[autoHoldActive="false"]:hover:enabled {
+    background-color: #7f849c;
+}
+QPushButton#autoHoldToggleButton[autoHoldActive="true"] {
+    background-color: #a6e3a1;
+    color: #1e1e2e;
+    border: 2px solid #94e2d5;
+}
+QPushButton#autoHoldToggleButton[autoHoldActive="true"]:hover:enabled {
+    background-color: #b8f0c0;
+}
+QPushButton#entryConfirmButton {
+    background-color: #a6e3a1;
+    color: #1e1e2e;
+    padding: 4px;
+    min-width: 36px;
+    max-width: 36px;
+    font-size: 16px;
+    font-weight: 700;
+}
+QPushButton#entryConfirmButton:hover:enabled { background-color: #b8f0c0; }
+QPushButton#entryConfirmButton:pressed:enabled { background-color: #94e2d5; }
+QPushButton#entryConfirmButton:disabled {
+    background-color: #6e2c2c;
+    color: #cdd6f4;
+    border: 1px solid #f38ba8;
+}
 QPushButton[lastPressed="true"] {
     background-color: #a6e3a1;
     color: #1e1e2e;
@@ -59,6 +96,18 @@ QCheckBox::indicator {
 QCheckBox::indicator:checked {
     background-color: #a6e3a1;
     border-color: #a6e3a1;
+}
+QCheckBox:disabled {
+    color: #f38ba8;
+}
+QCheckBox::indicator:disabled {
+    background-color: #6e2c2c;
+    border-color: #f38ba8;
+}
+QLineEdit:disabled {
+    background-color: #6e2c2c;
+    color: #a6adc8;
+    border-color: #f38ba8;
 }
 QScrollArea {
     border: 1px solid #45475a;

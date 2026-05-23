@@ -27,6 +27,21 @@ from controller_ui.socket_handlers import register_socket_handlers
 from sot.Region import core_regions
 from threadedsio import ThreadedSocketClient
 
+_TIP_PORT_SPIKE_REQUIRED = "Enable Port spike first."
+_TIP_AUTO_HOLD_BLOCKS_PORT_SPIKE = "Turn off Auto hold to use Port spike."
+_TIP_REJOIN_REQUIRES_PORT_SPIKE = "Rejoin session requires Port spike to be enabled."
+_TIP_AUTO_SPIKE_BLOCKS_MANUAL = (
+    "Disabled while Auto spike mode is running — the controller resets and sails automatically."
+)
+_TIP_DESIRED_PORT_BLOCKS_MANUAL = (
+    "Disabled while Desired port mode is running — the controller resets and sails automatically."
+)
+_TIP_AUTO_SPIKE_BLOCKS_DESIRED_PORT = "Turn off Auto spike mode to use Desired port mode."
+_TIP_DESIRED_PORT_BLOCKS_AUTO_SPIKE = "Turn off Desired port mode to use Auto spike mode."
+_TIP_ENTER_PORT = "Enter a port, then click ✓ or click away from the field."
+_TIP_ENTER_SHIP_COUNT = "Enter the number of ships, then click ✓ or click away from the field."
+_TIP_APPLY_VALUE = "Apply value"
+
 
 class ControllerWindow(QMainWindow):
     def __init__(self, sio=None):
@@ -50,6 +65,8 @@ class ControllerWindow(QMainWindow):
 
         self._build_ui()
         register_socket_handlers(self)
+        self._update_control_states()
+        self._update_auto_hold_button()
 
     def handle_automation_status(self, data: dict) -> None:
         if self.desired_port_mode and self.desired_port is not None:
@@ -66,6 +83,7 @@ class ControllerWindow(QMainWindow):
                     self.desired_port_mode = False
                     self.desired_port = None
                     self.desired_port_mode_checkbox.setChecked(False)
+                    self._update_control_states()
             elif data["status"] == "Ready":
                 self.emit_client_event("sail", client.name)
 
@@ -174,12 +192,14 @@ class ControllerWindow(QMainWindow):
             ("Kill game", "kill_game"),
             ("Stop running functions", "stop_functions"),
         ):
-            self._add_action_button(
+            button = self._add_action_button(
                 layout,
                 text,
                 event,
                 lambda checked=False, e=event: self.emit_client_event(e),
             )
+            if event == "rejoin_session":
+                self.rejoin_session_button = button
 
         layout.addStretch()
         return tab
@@ -194,31 +214,29 @@ class ControllerWindow(QMainWindow):
         self.desired_port_mode_checkbox.toggled.connect(self.set_desired_port_mode)
         layout.addWidget(self.desired_port_mode_checkbox)
 
-        self.desired_port_entry = QLineEdit()
-        self.desired_port_entry.setPlaceholderText("Port (e.g. 042)")
-        self.desired_port_entry.returnPressed.connect(self.set_desired_port)
-        layout.addWidget(self.desired_port_entry)
+        self.desired_port_entry, self.desired_port_confirm, desired_port_row = (
+            self._build_entry_with_confirm("Port (e.g. 042)", self.set_desired_port)
+        )
+        layout.addWidget(desired_port_row)
 
         layout.addWidget(self._section_label("Auto spike"))
         self.auto_spike_mode_checkbox = QCheckBox("Auto spike mode")
         self.auto_spike_mode_checkbox.toggled.connect(self.set_auto_spike_mode)
         layout.addWidget(self.auto_spike_mode_checkbox)
 
-        self.number_of_ships_entry = QLineEdit()
-        self.number_of_ships_entry.setPlaceholderText("Number of ships")
-        self.number_of_ships_entry.returnPressed.connect(self.set_number_of_ships)
-        layout.addWidget(self.number_of_ships_entry)
+        self.number_of_ships_entry, self.number_of_ships_confirm, ships_row = (
+            self._build_entry_with_confirm("Number of ships", self.set_number_of_ships)
+        )
+        layout.addWidget(ships_row)
 
         layout.addWidget(self._section_label("Auto hold"))
-        self._add_action_button(
-            layout,
-            "Start auto hold function",
-            "auto_hold",
-            lambda: self.emit_client_event("auto_hold"),
-        )
-
-        self.auto_hold_label = QLabel("Auto hold: False")
-        layout.addWidget(self.auto_hold_label)
+        self.auto_hold_button = QPushButton("Toggle auto hold")
+        self.auto_hold_button.setObjectName("autoHoldToggleButton")
+        self.auto_hold_button.setProperty("autoHoldActive", False)
+        self.auto_hold_button.setProperty("lastPressed", False)
+        self.auto_hold_button.clicked.connect(self.toggle_auto_hold)
+        self._action_buttons["auto_hold"] = self.auto_hold_button
+        layout.addWidget(self.auto_hold_button)
 
         layout.addStretch()
         return tab
@@ -271,6 +289,35 @@ class ControllerWindow(QMainWindow):
         label.setObjectName("sectionTitle")
         return label
 
+    def _build_entry_with_confirm(
+        self, placeholder: str, on_confirm
+    ) -> tuple[QLineEdit, QPushButton, QWidget]:
+        entry = QLineEdit()
+        entry.setPlaceholderText(placeholder)
+        confirm = QPushButton("✓")
+        confirm.setObjectName("entryConfirmButton")
+        confirm.setToolTip(_TIP_APPLY_VALUE)
+        entry.editingFinished.connect(on_confirm)
+        confirm.clicked.connect(entry.clearFocus)
+        entry.returnPressed.connect(entry.clearFocus)
+
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+        row_layout.addWidget(entry, stretch=1)
+        row_layout.addWidget(confirm)
+        return entry, confirm, row
+
+    @staticmethod
+    def _apply_entry_row(
+        entry: QLineEdit, confirm: QPushButton, enabled: bool, disabled_tooltip: str
+    ) -> None:
+        ControllerWindow._apply_control(entry, enabled, disabled_tooltip)
+        ControllerWindow._apply_control(
+            confirm, enabled, disabled_tooltip if not enabled else _TIP_APPLY_VALUE
+        )
+
     def _add_action_button(
         self, layout: QVBoxLayout, text: str, event_key: str, callback
     ) -> QPushButton:
@@ -293,26 +340,172 @@ class ControllerWindow(QMainWindow):
             button.style().unpolish(button)
             button.style().polish(button)
 
+    def _port_spike_controls_enabled(self) -> bool:
+        return self.portspike_checkbox.isChecked() and not self.auto_hold_mode
+
+    @staticmethod
+    def _apply_control(widget, enabled: bool, disabled_tooltip: str = "") -> None:
+        widget.setEnabled(enabled)
+        widget.setToolTip("" if enabled else disabled_tooltip)
+
+    def _update_control_states(self) -> None:
+        port_spike_on = self._port_spike_controls_enabled()
+        automation_active = self.auto_spike_mode or self.desired_port_mode
+
+        self._apply_control(
+            self.portspike_checkbox,
+            not self.auto_hold_mode,
+            _TIP_AUTO_HOLD_BLOCKS_PORT_SPIKE,
+        )
+
+        self._apply_control(
+            self.rejoin_session_button,
+            port_spike_on and not self.auto_spike_mode,
+            _TIP_AUTO_SPIKE_BLOCKS_MANUAL
+            if self.auto_spike_mode
+            else _TIP_REJOIN_REQUIRES_PORT_SPIKE,
+        )
+
+        self._apply_control(
+            self.desired_port_mode_checkbox,
+            port_spike_on and not self.auto_spike_mode,
+            _TIP_AUTO_SPIKE_BLOCKS_DESIRED_PORT
+            if self.auto_spike_mode
+            else _TIP_PORT_SPIKE_REQUIRED,
+        )
+
+        self._apply_control(
+            self.auto_spike_mode_checkbox,
+            port_spike_on and not self.desired_port_mode,
+            _TIP_DESIRED_PORT_BLOCKS_AUTO_SPIKE
+            if self.desired_port_mode
+            else _TIP_PORT_SPIKE_REQUIRED,
+        )
+
+        desired_port_entry_on = (
+            port_spike_on and self.desired_port_mode and not self.auto_spike_mode
+        )
+        desired_port_tip = (
+            _TIP_AUTO_SPIKE_BLOCKS_DESIRED_PORT
+            if self.auto_spike_mode
+            else _TIP_PORT_SPIKE_REQUIRED
+            if not port_spike_on
+            else _TIP_ENTER_PORT
+        )
+        self._apply_entry_row(
+            self.desired_port_entry,
+            self.desired_port_confirm,
+            desired_port_entry_on,
+            desired_port_tip,
+        )
+
+        ships_entry_on = (
+            port_spike_on and self.auto_spike_mode and not self.desired_port_mode
+        )
+        ships_tip = (
+            _TIP_DESIRED_PORT_BLOCKS_AUTO_SPIKE
+            if self.desired_port_mode
+            else _TIP_PORT_SPIKE_REQUIRED
+            if not port_spike_on
+            else _TIP_ENTER_SHIP_COUNT
+        )
+        self._apply_entry_row(
+            self.number_of_ships_entry,
+            self.number_of_ships_confirm,
+            ships_entry_on,
+            ships_tip,
+        )
+
+        manual_disabled_tip = (
+            _TIP_AUTO_SPIKE_BLOCKS_MANUAL
+            if self.auto_spike_mode
+            else _TIP_DESIRED_PORT_BLOCKS_MANUAL
+        )
+        for event in ("sail", "reset"):
+            button = self._action_buttons.get(event)
+            if button:
+                self._apply_control(
+                    button,
+                    not automation_active,
+                    manual_disabled_tip,
+                )
+
+    def _update_auto_hold_button(self) -> None:
+        self.auto_hold_button.setProperty("autoHoldActive", self.auto_hold_mode)
+        self.auto_hold_button.style().unpolish(self.auto_hold_button)
+        self.auto_hold_button.style().polish(self.auto_hold_button)
+
+    def toggle_auto_hold(self) -> None:
+        self._set_auto_hold_mode(not self.auto_hold_mode, notify_clients=True)
+        self._set_last_pressed("auto_hold", "Toggle auto hold")
+
+    def _set_auto_hold_mode(self, enabled: bool, *, notify_clients: bool = True) -> None:
+        self.auto_hold_mode = enabled
+
+        if enabled:
+            self.portspike_checkbox.blockSignals(True)
+            self.portspike_checkbox.setChecked(False)
+            self.portspike_checkbox.blockSignals(False)
+            self.sio.emit("portspiking", False)
+            self.desired_port_mode_checkbox.setChecked(False)
+            self.auto_spike_mode_checkbox.setChecked(False)
+            self.desired_port_mode = False
+            self.auto_spike_mode = False
+            self.desired_port_entry.clear()
+            self.number_of_ships_entry.clear()
+
+        self._update_auto_hold_button()
+        self._update_control_states()
+
+        if notify_clients:
+            active_clients = self.client_manager.get_active_clients()
+            self.sio.emit("client_event", {"event": "auto_hold", "clients": active_clients})
+
     def change_region(self, *_args):
         self.sio.emit("region", self.region_combo.currentText())
 
     def set_port_spike(self, *_args):
+        if self.portspike_checkbox.isChecked():
+            if self.auto_hold_mode:
+                self._set_auto_hold_mode(False, notify_clients=False)
+        else:
+            self.desired_port_mode_checkbox.setChecked(False)
+            self.auto_spike_mode_checkbox.setChecked(False)
+            self.desired_port_mode = False
+            self.auto_spike_mode = False
         self.sio.emit("portspiking", self.portspike_checkbox.isChecked())
+        self._update_control_states()
 
     def set_desired_port_mode(self, checked=None):
         self.desired_port_mode = self.desired_port_mode_checkbox.isChecked()
+        if self.desired_port_mode and self.auto_spike_mode:
+            self.auto_spike_mode_checkbox.setChecked(False)
+            self.auto_spike_mode = False
+            self.number_of_ships_entry.clear()
         print(f"Desired port mode set to {self.desired_port_mode}")
+        self._update_control_states()
 
     def set_desired_port(self, *_args):
-        self.desired_port = self.desired_port_entry.text()
+        port = self.desired_port_entry.text().strip()
+        if not port:
+            return
+        self.desired_port = port
         print(f"Desired port set to {self.desired_port}")
 
     def set_auto_spike_mode(self, checked=None):
         self.auto_spike_mode = self.auto_spike_mode_checkbox.isChecked()
+        if self.auto_spike_mode and self.desired_port_mode:
+            self.desired_port_mode_checkbox.setChecked(False)
+            self.desired_port_mode = False
+            self.desired_port_entry.clear()
         print(f"Auto spike mode set to {self.auto_spike_mode}")
+        self._update_control_states()
 
     def set_number_of_ships(self, *_args):
-        self.number_of_ships = self.number_of_ships_entry.text()
+        ships = self.number_of_ships_entry.text().strip()
+        if not ships:
+            return
+        self.number_of_ships = ships
         print(f"Number of ships set to {self.number_of_ships}")
 
     def set_person_to_invite(self, *_args):
@@ -334,15 +527,6 @@ class ControllerWindow(QMainWindow):
                     if client.status_label:
                         client.status_label.setText(client.status)
             self.client_manager.update_biggest_match(self.biggest_match_label)
-        if event == "auto_hold":
-            self.auto_hold_mode = not self.auto_hold_mode
-            self.auto_hold_label.setText(f"Auto hold: {self.auto_hold_mode}")
-            if self.auto_hold_mode:
-                self.portspike_checkbox.setChecked(False)
-                self.desired_port_mode_checkbox.setChecked(False)
-                self.auto_spike_mode_checkbox.setChecked(False)
-                self.desired_port_entry.clear()
-                self.number_of_ships_entry.clear()
 
     def start_hold_request(self):
         active_clients = self.client_manager.get_active_clients()
