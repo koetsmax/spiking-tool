@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import traceback
-from typing import Any, Awaitable, Callable, List, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 import socketio
 
@@ -17,7 +17,7 @@ class ClientState:
         self.prev_port: Optional[int] = None
 
 
-def _targets_this_client(client_names: List[str], local_name: str) -> bool:
+def _targets_this_client(client_names: list[str], local_name: str) -> bool:
     return local_name in client_names
 
 
@@ -32,7 +32,7 @@ def register_client_handlers(
         state = ClientState()
 
     async def run_if_selected(
-        data: List[str], action: Callable[[], Awaitable[Any]]
+        data: list[str], action: Callable[[], Awaitable[Any]]
     ) -> None:
         if _targets_this_client(data, client_name):
             await action()
