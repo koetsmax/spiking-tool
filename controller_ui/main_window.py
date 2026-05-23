@@ -52,9 +52,9 @@ class ControllerWindow(QMainWindow):
         if self.desired_port_mode and self.desired_port is not None:
             client = self.client_manager.get_client(data["client"])
             if isinstance(data["status"], int):
-                status = int(str(data["status"])[2:])
-                if len(str(status).strip()) < 3:
-                    status = "0" * (3 - len(str(status))) + str(status)
+                from spiking_tool.ports import normalize_port_digits
+
+                status = normalize_port_digits(data["status"])
                 if int(status) != int(self.desired_port.strip()):
                     print(f"C{client.name}: {int(status)}")
                     self.emit_client_event("reset", client.name)

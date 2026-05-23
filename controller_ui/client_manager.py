@@ -38,21 +38,16 @@ class ClientManager:
         return self.clients.get(name)
 
     def set_client_status(self, name: str, status) -> None:
+        from spiking_tool.ports import format_client_status
+
         client = self.get_client(name)
         if not client:
             return
 
-        if isinstance(status, int):
-            status = int(str(status)[2:])
-            if len(str(status)) < 3:
-                status = "0" * (3 - len(str(status))) + str(status)
-            client.port = status
-
-        if "outpost=" in str(status):
-            location = str(status).replace("outpost=", "")
-            status = f"{client.port} -- {location}"
-
-        client.status = status
+        display_status, port = format_client_status(status, client.port)
+        if port is not None:
+            client.port = port
+        client.status = display_status
         if client.status_label:
             client.status_label.setText(str(client.status))
 
