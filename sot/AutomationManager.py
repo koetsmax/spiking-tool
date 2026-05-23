@@ -3,7 +3,11 @@ import asyncio
 import keyboard
 import pynput.mouse
 
-from .ui_automation import GameScreenMatcher
+from .ui_automation import (
+    SCREEN_POLL_SECONDS,
+    GameScreenMatcher,
+    ResolutionCheckResult,
+)
 
 
 class AutomationManager:
@@ -12,12 +16,84 @@ class AutomationManager:
         self.ship = "Brigantine"
         self.holding = False
         self.screen = GameScreenMatcher(should_stop=lambda: self.stop)
+        self._check_resolution_after_launch = False
+        self._resolution_metric_state: str | None = None
 
     def activate_window(self):
         self.screen.activate_window()
 
-    async def wait_for_screen(self, image_path, message=None):
-        return await self.screen.wait_for_screen(image_path, message=message)
+    def check_game_resolution(self):
+        return self.screen.ensure_target_resolution()
+
+    @staticmethod
+    def resolution_metric_state(result: ResolutionCheckResult) -> str:
+        if result.status in ("ok", "resized"):
+            return "ok"
+        if result.status == "no_window":
+            return "unknown"
+        return "bad"
+
+    async def emit_resolution_metric(
+        self,
+        sio,
+        result: ResolutionCheckResult | None = None,
+        *,
+        force: bool = False,
+    ) -> None:
+        if result is None:
+            result = self.screen.check_target_resolution()
+        state = self.resolution_metric_state(result)
+        if not force and state == self._resolution_metric_state:
+            return
+        self._resolution_metric_state = state
+        await sio.emit(
+            "client_metric",
+            data={
+                "metric": "resolution",
+                "state": state,
+            },
+        )
+
+    async def _maybe_fix_and_report_resolution(self, sio) -> None:
+        check = self.screen.check_target_resolution()
+        if check.status == "no_window":
+            await self.emit_resolution_metric(sio, check)
+            return
+        if check.status != "ok":
+            result = self.screen.ensure_target_resolution()
+            await self.emit_resolution_metric(sio, result)
+        else:
+            await self.emit_resolution_metric(sio, check)
+
+    async def report_game_resolution(self, sio) -> None:
+        result = self.check_game_resolution()
+        await sio.emit("update_status", data=result.status_message)
+        await self.emit_resolution_metric(sio, result, force=True)
+
+    async def wait_for_screen(
+        self,
+        sio,
+        image_path,
+        message=None,
+        *,
+        fix_resolution: bool = False,
+    ):
+        if not fix_resolution:
+            return await self.screen.wait_for_screen(image_path, message=message)
+
+        polls = 0
+        while True:
+            if self.screen.screen_visible(image_path):
+                await self.emit_resolution_metric(sio)
+                return True
+            polls += 1
+            if polls % 20 == 0:
+                await self._maybe_fix_and_report_resolution(sio)
+            if message:
+                print(message)
+            await asyncio.sleep(SCREEN_POLL_SECONDS)
+            if self.stop:
+                return False
 
     async def wait_for_play_screen(self):
         return await self.screen.wait_for_play_screen()
@@ -30,6 +106,7 @@ class AutomationManager:
         await sio.emit("update_status", data=f"Ship set to {self.ship}")
 
     async def launch_game(self, sio, leave):
+        self._check_resolution_after_launch = True
         await sio.emit("update_status", data="Launching Game")
         keyboard.press_and_release("win")
         await asyncio.sleep(2.5)
@@ -56,14 +133,18 @@ class AutomationManager:
         await asyncio.sleep(0.5)
 
         if not await self.wait_for_screen(
-            "img/portspike_connected.png", "waiting for portspike client to connect"
+            sio,
+            "img/portspike_connected.png",
+            "waiting for portspike client to connect",
         ):
             return
 
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.3)
         await sio.emit("update_status", data="Awaiting rejoin prompt")
-        if not await self.wait_for_screen("img/rejoin_prompt.png", "waiting for rejoin prompt"):
+        if not await self.wait_for_screen(
+            sio, "img/rejoin_prompt.png", "waiting for rejoin prompt"
+        ):
             return
 
         keyboard.press_and_release("enter")
@@ -74,14 +155,18 @@ class AutomationManager:
         if portspiking:
             await sio.emit("update_status", data="Awaiting connection")
             if not await self.wait_for_screen(
-                "img/portspike_connected.png", "waiting for portspike client to connect"
+                sio,
+                "img/portspike_connected.png",
+                "waiting for portspike client to connect",
             ):
                 return
 
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
             await sio.emit("update_status", data="Awaiting rejoin prompt")
-            if not await self.wait_for_screen("img/rejoin_prompt.png", "waiting for rejoin prompt"):
+            if not await self.wait_for_screen(
+                sio, "img/rejoin_prompt.png", "waiting for rejoin prompt"
+            ):
                 return
 
             keyboard.press_and_release("esc")
@@ -101,7 +186,21 @@ class AutomationManager:
             keyboard.press_and_release("enter")
 
         if not portspiking:
-            if not await self.wait_for_screen("img/start_screen.png", "Waiting for start screen"):
+            if self._check_resolution_after_launch:
+                self._check_resolution_after_launch = False
+                await self.report_game_resolution(sio)
+            else:
+                check = self.screen.check_target_resolution()
+                if check.status not in ("ok", "no_window"):
+                    result = self.screen.ensure_target_resolution()
+                    await self.emit_resolution_metric(sio, result)
+
+            if not await self.wait_for_screen(
+                sio,
+                "img/start_screen.png",
+                "Waiting for start screen",
+                fix_resolution=True,
+            ):
                 return
 
             await sio.emit("update_status", data="Starting Game")
@@ -133,13 +232,17 @@ class AutomationManager:
             keyboard.press_and_release("right")
             await asyncio.sleep(0.6)
             if not await self.wait_for_screen(
-                "img/captaincy_available.png", "Waiting for captaincy to load"
+                sio,
+                "img/captaincy_available.png",
+                "Waiting for captaincy to load",
             ):
                 return
 
             keyboard.press_and_release("enter")
             if not await self.wait_for_screen(
-                "img/ship_loaded.png", "Waiting for captaincy ship to load"
+                sio,
+                "img/ship_loaded.png",
+                "Waiting for captaincy ship to load",
             ):
                 return
         else:
@@ -157,7 +260,9 @@ class AutomationManager:
         await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
 
-        if not await self.wait_for_screen("img/sail_screen.png", "Waiting for sail screen"):
+        if not await self.wait_for_screen(
+            sio, "img/sail_screen.png", "Waiting for sail screen"
+        ):
             return
 
         await sio.emit("update_status", data="Ready")

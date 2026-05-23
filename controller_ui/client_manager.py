@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from PySide6.QtWidgets import QLabel, QCheckBox, QComboBox
+    from PySide6.QtWidgets import QLabel, QCheckBox, QComboBox, QWidget
+
+    from controller_ui.client_columns import MetricState
 
 
 class Client:
@@ -11,6 +13,8 @@ class Client:
         self.name = name
         self.ship_type = "Brigantine"
         self.status = "Pending..."
+        self.metrics: dict[str, "MetricState"] = {}
+        self.column_widgets: dict[str, "QWidget"] = {}
         self.active_checkbox: Optional[QCheckBox] = None
         self.name_label: Optional[QLabel] = None
         self.ship_combo: Optional[QComboBox] = None
@@ -50,6 +54,15 @@ class ClientManager:
         client.status = display_status
         if client.status_label:
             client.status_label.setText(str(client.status))
+
+    def set_client_metric(self, name: str, metric: str, state: "MetricState") -> None:
+        from controller_ui.client_columns import refresh_client_metrics
+
+        client = self.get_client(name)
+        if not client:
+            return
+        client.metrics[metric] = state
+        refresh_client_metrics(client)
 
     def remove_client(self, name: str) -> None:
         if name in self.clients:

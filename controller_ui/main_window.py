@@ -6,20 +6,22 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
     QPushButton,
-    QSizePolicy,
     QSplitter,
     QTableWidget,
-    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from controller_ui.client_columns import (
+    CLIENT_TABLE_COLUMNS,
+    configure_client_table,
+    populate_client_row,
+)
 from controller_ui.client_manager import ClientManager
 from controller_ui.socket_handlers import register_socket_handlers
 from sot.Region import core_regions
@@ -123,31 +125,20 @@ class ControllerWindow(QMainWindow):
         self.biggest_match_label.setWordWrap(True)
         clients_layout.addWidget(self.biggest_match_label)
 
-        self.client_table = QTableWidget(0, 4)
-        self.client_table.setHorizontalHeaderLabels(["Active", "Instance", "Ship", "Status"])
+        self.client_table = QTableWidget(0, len(CLIENT_TABLE_COLUMNS))
         self.client_table.verticalHeader().setVisible(False)
         self.client_table.setShowGrid(False)
         self.client_table.setSelectionMode(QTableWidget.NoSelection)
         self.client_table.setFocusPolicy(Qt.NoFocus)
         self.client_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.client_table.setAlternatingRowColors(True)
-        self._configure_client_table()
+        configure_client_table(self.client_table)
         clients_layout.addWidget(self.client_table, stretch=1)
 
         splitter.addWidget(clients_panel)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([340, 520])
-
-    def _configure_client_table(self):
-        header = self.client_table.horizontalHeader()
-        header.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        header.setSectionResizeMode(0, QHeaderView.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
-        self.client_table.setColumnWidth(0, 56)
-        self.client_table.verticalHeader().setDefaultSectionSize(40)
 
     def _centered_cell_widget(self, widget: QWidget) -> QWidget:
         container = QWidget()
@@ -241,6 +232,14 @@ class ControllerWindow(QMainWindow):
         self.last_pressed_label = QLabel("Last pressed: None")
         self.last_pressed_label.setStyleSheet("color: #a6adc8;")
         layout.addWidget(self.last_pressed_label)
+
+        layout.addWidget(self._section_label("Display"))
+        self._add_action_button(
+            layout,
+            "Fix game resolution (800x600)",
+            "fix_resolution",
+            lambda: self.emit_client_event("fix_resolution"),
+        )
 
         layout.addWidget(self._section_label("Match"))
         self._add_action_button(
@@ -377,55 +376,18 @@ class ControllerWindow(QMainWindow):
 
     def create_client_list(self):
         self.client_table.setRowCount(0)
-        ship_types = ["Sloop", "Brigantine", "Galleon", "Captaincy"]
+        name_column_index = next(
+            i for i, col in enumerate(CLIENT_TABLE_COLUMNS) if col.column_id == "name"
+        )
 
         for client_name in self.client_manager.clients:
             client = self.client_manager.get_client(client_name)
             row = self.client_table.rowCount()
             self.client_table.insertRow(row)
+            client.column_widgets = {}
+            populate_client_row(self.client_table, row, client, self)
 
-            was_checked = (
-                client.active_checkbox.isChecked() if client.active_checkbox else True
-            )
-            ship_type = client.ship_combo.currentText() if client.ship_combo else client.ship_type
-            status = client.status
-
-            active_checkbox = QCheckBox()
-            active_checkbox.setChecked(was_checked)
-            client.active_checkbox = active_checkbox
-            self.client_table.setCellWidget(row, 0, self._centered_cell_widget(active_checkbox))
-
-            name_item = QTableWidgetItem(client.name)
-            name_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            self.client_table.setItem(row, 1, name_item)
-
-            ship_combo = QComboBox()
-            ship_combo.addItems(ship_types)
-            ship_combo.setCurrentText(ship_type)
-            ship_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            client.ship_combo = ship_combo
-
-            def ship_type_changed(text, c=client):
-                c.ship_type = text
-                self.sio.emit(
-                    "change_ship",
-                    data={"client": c.name, "ship_type": text},
-                )
-
-            ship_combo.currentTextChanged.connect(ship_type_changed)
-            self.client_table.setCellWidget(row, 2, ship_combo)
-
-            status_label = QLabel(status)
-            status_label.setWordWrap(True)
-            status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            client.status_label = status_label
-            status_container = QWidget()
-            status_layout = QHBoxLayout(status_container)
-            status_layout.setContentsMargins(8, 0, 4, 0)
-            status_layout.addWidget(status_label, 1)
-            self.client_table.setCellWidget(row, 3, status_container)
-
-        self.client_table.resizeColumnToContents(1)
+        self.client_table.resizeColumnToContents(name_column_index)
 
 
 # Backward-compatible alias

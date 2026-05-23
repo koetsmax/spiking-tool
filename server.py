@@ -100,6 +100,15 @@ class SpikingServer:
             )
 
         @self.sio.event
+        async def client_metric(sid, data):
+            client = self.clients[sid].name if sid in self.clients else sid
+            await self.sio.emit(
+                "client_metric",
+                data={"client": client, **data},
+                room=self.controller,
+            )
+
+        @self.sio.event
         async def hold_request_ack(sid, data):
             client = self.clients[sid].name if sid in self.clients else sid
             await self.sio.emit(

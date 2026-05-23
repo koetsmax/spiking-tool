@@ -36,6 +36,14 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
         controller.handle_automation_status(data)
 
     @controller.sio.event()
+    def client_metric(data):
+        controller.client_manager.set_client_metric(
+            data["client"],
+            data["metric"],
+            data["state"],
+        )
+
+    @controller.sio.event()
     def hold_request_ack(data):
         client = controller.client_manager.get_client(data["client"])
         if client:

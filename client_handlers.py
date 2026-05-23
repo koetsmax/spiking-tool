@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import traceback
 from typing import Any, Awaitable, Callable, Optional
 
@@ -30,6 +31,10 @@ def register_client_handlers(
 ) -> ClientState:
     if state is None:
         state = ClientState()
+
+    @sio.event()
+    async def connect():
+        asyncio.create_task(automation.emit_resolution_metric(sio, force=True))
 
     async def run_if_selected(
         data: list[str], action: Callable[[], Awaitable[Any]]
@@ -102,6 +107,10 @@ def register_client_handlers(
             state.prev_port = None
             connection.forget_last_match()
             print("Forgot last match — ready to detect management server again")
+
+    @sio.event()
+    async def fix_resolution(data):
+        await run_if_selected(data, lambda: automation.report_game_resolution(sio))
 
     async def on_join(ip, port):
         try:
