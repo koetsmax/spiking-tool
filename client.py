@@ -89,6 +89,13 @@ def _show_console() -> bool:
     return False
 
 
+def _afk_exe_path() -> str:
+    bundled = os.path.join(_app_dir(), "anti-afk-v2.exe")
+    if os.path.isfile(bundled):
+        return bundled
+    return os.path.join(_app_dir(), "afk", "v2", "anti-afk-v2.exe")
+
+
 async def main():
     show_console = _show_console()
     install_client_remote_logging(console_output=show_console)
@@ -119,9 +126,13 @@ async def main():
 
     logger.info("Starting client...")
     logger.info("Launching afk macro...")
+    afk_exe = _afk_exe_path()
     try:
-        os.startfile("anti-afk-v2.exe")
-        logger.info("AFK macro launched")
+        if os.path.isfile(afk_exe):
+            os.startfile(afk_exe)
+            logger.info("AFK macro launched")
+        else:
+            raise FileNotFoundError(afk_exe)
     except OSError as e:
         logger.warning("Failed to launch afk macro: %s", e)
 
