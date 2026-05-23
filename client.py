@@ -24,18 +24,43 @@ VERSION = "3.0.1"
 logger = logging.getLogger(__name__)
 
 
-def get_config():
-    try:
-        global config_file
-        with open("config.toml", "r", encoding="UTF=8") as f:
-            config_file = tomlkit.parse(f.read())
+def _app_dir() -> str:
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.getcwd()
 
+
+def _config_path() -> str:
+    return os.path.join(_app_dir(), "config.toml")
+
+
+def _default_client_name() -> str:
+    env_name = os.environ.get("SPIKING_TOOL_CLIENT_NAME", "").strip()
+    if env_name:
+        return env_name
+    return os.environ.get("COMPUTERNAME", "client")
+
+
+def get_config():
+    config_path = _config_path()
+    try:
+        with open(config_path, "r", encoding="UTF-8") as f:
+            config_file = tomlkit.parse(f.read())
     except FileNotFoundError:
         config_file = tomlkit.document()
-        config_file["name"] = input("Enter name of this client: ")
-        config_file["url"] = "http://ashen.spiker.famkoets.nl"
+        if sys.stdin.isatty():
+            config_file["name"] = input("Enter name of this client: ")
+        else:
+            config_file["name"] = _default_client_name()
+            logger.warning(
+                "%s not found and no interactive console; using client name %r "
+                "(set SPIKING_TOOL_CLIENT_NAME to override, or add show_console = true to config)",
+                config_path,
+                config_file["name"],
+            )
+        config_file.setdefault("url", "http://ashen.spiker.famkoets.nl")
 
-    with open("config.toml", "w", encoding="UTF=8") as f:
+    with open(config_path, "w", encoding="UTF-8") as f:
         f.write(tomlkit.dumps(config_file))
 
     return config_file
@@ -43,7 +68,7 @@ def get_config():
 
 def _read_show_console_config() -> bool | None:
     try:
-        with open("config.toml", "r", encoding="UTF=8") as f:
+        with open(_config_path(), "r", encoding="UTF-8") as f:
             doc = tomlkit.parse(f.read())
         if "show_console" in doc:
             return bool(doc["show_console"])
@@ -65,9 +90,12 @@ def _show_console() -> bool:
 
 
 async def main():
-    install_client_remote_logging()
-    if not _show_console():
+    show_console = _show_console()
+    install_client_remote_logging(console_output=show_console)
+    if not show_console:
         hide_console_window()
+
+    config = get_config()
 
     logger.info("Checking for updates...")
     request = requests.get(
@@ -142,7 +170,6 @@ async def main():
     sio = socketio.AsyncClient()
     connection = sot.ConnectionManager()
     automation = sot.AutomationManager()
-    config = get_config()
     register_client_handlers(sio, config["name"], connection, automation, ClientState())
 
     auth = {"name": config["name"], "type": "client"}
