@@ -1,8 +1,14 @@
+import logging
+
 import socketio
 import uvicorn
 
+from spiking_tool.logging_setup import setup_logging
 
-def normalize_auth(auth, sid: str) -> dict:
+logger = logging.getLogger(__name__)
+
+
+def normalize_auth(auth: str | dict | None, sid: str) -> dict[str, str]:
     if auth is None:
         return {"name": sid, "type": "client"}
     if isinstance(auth, str):
@@ -111,5 +117,7 @@ class SpikingServer:
 
 
 if __name__ == "__main__":
+    setup_logging()
     server = SpikingServer()
+    logger.info("Starting spiking server")
     server.run()

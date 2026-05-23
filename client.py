@@ -13,10 +13,14 @@ import socketio
 import tomlkit
 from packaging import version
 
+import logging
+
 import sot
 from client_handlers import ClientState, register_client_handlers
+from spiking_tool.logging_setup import setup_logging
 
 VERSION = "2.4.0"
+logger = logging.getLogger(__name__)
 
 
 def get_config():
@@ -37,7 +41,8 @@ def get_config():
 
 
 async def main():
-    print("checking for updates...")
+    setup_logging()
+    logger.info("checking for updates...")
     request = requests.get(
         "https://api.github.com/repos/koetsmax/spiking-tool/releases/latest",
         timeout=15,
@@ -114,9 +119,7 @@ async def main():
     connection = sot.ConnectionManager()
     automation = sot.AutomationManager()
     config = get_config()
-    client_state = register_client_handlers(
-        sio, config["name"], connection, automation, ClientState()
-    )
+    register_client_handlers(sio, config["name"], connection, automation, ClientState())
 
     auth = {"name": config["name"], "type": "client"}
 

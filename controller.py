@@ -1,5 +1,6 @@
 """Entry point for the spiking-tool controller GUI."""
 
+import logging
 import sys
 import traceback
 
@@ -7,9 +8,13 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from controller_ui import Controller, apply_dark_theme
+from spiking_tool.logging_setup import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
+    setup_logging()
     app = QApplication(sys.argv)
     apply_dark_theme(app)
 

@@ -54,7 +54,6 @@ class EventManager:
         while True:
             try:
                 while event := self.eventQueue.get(block=False):
-                    print(event)
                     self.events[event[0]].trigger(*event[1][0], **event[1][1])
             except queue.Empty:
                 pass
@@ -65,7 +64,6 @@ class EventManager:
     def processEvents(self):
         try:
             while event := self.eventQueue.get(block=False):
-                print(event)
                 self.events[event[0]].trigger(*event[1][0], **event[1][1])
         except queue.Empty:
             pass
