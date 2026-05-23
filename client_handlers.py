@@ -35,15 +35,16 @@ def register_client_handlers(
     def is_selected(client_names: list[str]) -> bool:
         return identity["display_name"] in client_names
 
-    async def shutdown() -> None:
+    async def shutdown(_data=None) -> None:
         remote_log_bridge.enqueue("Shutdown requested from controller", "INFO")
         automation.stop = True
         connection.stop()
-        try:
-            await sio.disconnect()
-        except Exception:
-            pass
         os._exit(0)
+
+    @sio.event()
+    async def shutdown_client(data=None):
+        del data
+        await shutdown()
 
     @sio.event()
     async def connect():
@@ -58,10 +59,6 @@ def register_client_handlers(
         remote_log_bridge.enqueue(
             f"Assigned controller name: {identity['display_name']}", "INFO"
         )
-
-    @sio.event()
-    async def shutdown_client():
-        await shutdown()
 
     async def run_if_selected(
         data: list[str], action: Callable[[], Awaitable[Any]]

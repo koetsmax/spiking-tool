@@ -573,6 +573,7 @@ class ControllerWindow(QMainWindow):
             self.emit_client_event("hold_request", client.name)
 
     def kill_client(self, display_name: str) -> None:
+        print(f"Kill requested for {display_name}")
         self.sio.emit("kill_client", {"clients": [display_name]})
 
     def emit_invite_request(self, *_args):

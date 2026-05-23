@@ -88,15 +88,19 @@ class SpikingServer:
 
         @self.sio.event
         async def disconnect(sid):
-            if sid in self.clients:
-                print(f"Client {self.clients[sid].display_name} disconnected")
-                del self.clients[sid]
-                if self.controller:
-                    await self.sio.emit(
-                        "client_disconnect",
-                        data=self._game_client_roster(),
-                        room=self.controller,
-                    )
+            if sid not in self.clients:
+                return
+            client = self.clients[sid]
+            print(f"Client {client.display_name} disconnected")
+            if sid == self.controller:
+                self.controller = None
+            del self.clients[sid]
+            if self.controller:
+                await self.sio.emit(
+                    "client_disconnect",
+                    data=self._game_client_roster(),
+                    room=self.controller,
+                )
 
         @self.sio.event
         async def join(sid, data):
@@ -151,10 +155,18 @@ class SpikingServer:
         @self.sio.event
         async def kill_client(sid, data):
             if sid != self.controller:
+                logger.warning("kill_client ignored: sender %s is not the controller", sid)
+                return
+            if not isinstance(data, dict):
+                logger.warning("kill_client ignored: invalid payload %r", data)
                 return
             targets = set(data.get("clients", []))
+            if not targets:
+                logger.warning("kill_client ignored: no targets in %r", data)
+                return
             for client_sid, client in list(self.clients.items()):
                 if client.type == "client" and client.display_name in targets:
+                    logger.info("Sending shutdown_client to %s", client.display_name)
                     await self.sio.emit("shutdown_client", to=client_sid)
 
         @self.sio.event

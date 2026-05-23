@@ -20,7 +20,7 @@ from client_handlers import ClientState, register_client_handlers
 from spiking_tool.remote_log import install_client_remote_logging
 from spiking_tool.win_console import hide_console_window
 
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 logger = logging.getLogger(__name__)
 
 
