@@ -104,7 +104,7 @@ if __name__ == "__main__":
     if pyuac.isUserAdmin():
         try:
             asyncio.run(main())
-        except:  # pylint: disable=bare-except
+        except Exception:
             traceback.print_exc()
     else:
         pyuac.runAsAdmin(wait=False)

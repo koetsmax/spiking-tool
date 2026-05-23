@@ -86,7 +86,7 @@ async def main():
             fName = files[0].split(".")[0]
             try:
                 timestamp = int(fName)
-            except:
+            except (ValueError, TypeError):
                 pass
 
     if timestamp < (int(time.time()) - 86400):
@@ -95,7 +95,7 @@ async def main():
         for file in os.listdir(mmdbFolder):
             try:
                 os.remove(os.path.join(mmdbFolder, file))
-            except:
+            except OSError:
                 pass
 
         print("Downloading new IP database...")
@@ -210,7 +210,7 @@ async def main():
             nonlocal prev_port
             prev_port = int(port)
             await sio.emit("join", {"ip": ip, "port": port})
-        except:
+        except Exception:
             traceback.print_exc()
 
     sotc.events.join += on_join  # pylint=disable=no-member
@@ -223,7 +223,7 @@ async def main():
             await sio.wait()
         except socketio.exceptions.ConnectionError:
             pass
-        except:
+        except Exception:
             traceback.print_exc()
 
 
@@ -231,7 +231,7 @@ if __name__ == "__main__":
     if pyuac.isUserAdmin():
         try:
             asyncio.run(main())
-        except:  # pylint: disable=bare-except
+        except Exception:
             traceback.print_exc()
     else:
         pyuac.runAsAdmin(wait=False)

@@ -11,7 +11,7 @@ class DumbConnectionManager:
 
             self.divertThread = threading.Thread(target=self._divert_SoT)
             self.divertThread.start()
-        except:
+        except Exception:
             traceback.print_exc()
 
     def _divert_SoT(self):
@@ -29,7 +29,7 @@ class DumbConnectionManager:
                     if self.force_disconnect:
                         continue
 
-                except:
+                except Exception:
                     traceback.print_exc()
                 with self.send_lock:
                     self._winDivert.send(packet)  # re-inject the packet into the network stack
