@@ -44,6 +44,7 @@ class ControllerWindow(QMainWindow):
         self.auto_spike_mode = False
         self.number_of_ships = None
         self.person_to_invite = None
+        self._action_buttons: dict[str, QPushButton] = {}
 
         self._build_ui()
         register_socket_handlers(self)
@@ -182,13 +183,13 @@ class ControllerWindow(QMainWindow):
             ("Kill game", "kill_game"),
             ("Stop running functions", "stop_functions"),
         ):
-            btn = QPushButton(text)
-            btn.clicked.connect(lambda checked=False, e=event: self.emit_client_event(e))
-            layout.addWidget(btn)
+            self._add_action_button(
+                layout,
+                text,
+                event,
+                lambda checked=False, e=event: self.emit_client_event(e),
+            )
 
-        self.last_pressed_label = QLabel("Last pressed: None")
-        self.last_pressed_label.setStyleSheet("color: #a6adc8;")
-        layout.addWidget(self.last_pressed_label)
         layout.addStretch()
         return tab
 
@@ -218,9 +219,12 @@ class ControllerWindow(QMainWindow):
         layout.addWidget(self.number_of_ships_entry)
 
         layout.addWidget(self._section_label("Auto hold"))
-        auto_hold_btn = QPushButton("Start auto hold function")
-        auto_hold_btn.clicked.connect(lambda: self.emit_client_event("auto_hold"))
-        layout.addWidget(auto_hold_btn)
+        self._add_action_button(
+            layout,
+            "Start auto hold function",
+            "auto_hold",
+            lambda: self.emit_client_event("auto_hold"),
+        )
 
         self.auto_hold_label = QLabel("Auto hold: False")
         layout.addWidget(self.auto_hold_label)
@@ -233,24 +237,32 @@ class ControllerWindow(QMainWindow):
         layout = QVBoxLayout(tab)
         layout.setSpacing(10)
 
+        layout.addWidget(self._section_label("Last action"))
+        self.last_pressed_label = QLabel("Last pressed: None")
+        self.last_pressed_label.setStyleSheet("color: #a6adc8;")
+        layout.addWidget(self.last_pressed_label)
+
         layout.addWidget(self._section_label("Match"))
-        forget_match_btn = QPushButton("Forget last match")
-        forget_match_btn.clicked.connect(lambda: self.emit_client_event("forget_match"))
-        layout.addWidget(forget_match_btn)
+        self._add_action_button(
+            layout,
+            "Forget last match",
+            "forget_match",
+            lambda: self.emit_client_event("forget_match"),
+        )
 
         layout.addWidget(self._section_label("Hold"))
-        hold_btn = QPushButton("Simulate hold request")
-        hold_btn.clicked.connect(self.start_hold_request)
-        layout.addWidget(hold_btn)
+        self._add_action_button(
+            layout, "Simulate hold request", "hold_request", self.start_hold_request
+        )
 
         layout.addWidget(self._section_label("Invite"))
         self.person_to_invite_entry = QLineEdit("person_to_invite")
         self.person_to_invite_entry.returnPressed.connect(self.set_person_to_invite)
         layout.addWidget(self.person_to_invite_entry)
 
-        invite_btn = QPushButton("Simulate invite request")
-        invite_btn.clicked.connect(self.emit_invite_request)
-        layout.addWidget(invite_btn)
+        self._add_action_button(
+            layout, "Simulate invite request", "invite_request", self.emit_invite_request
+        )
 
         layout.addStretch()
         return tab
@@ -259,6 +271,28 @@ class ControllerWindow(QMainWindow):
         label = QLabel(text)
         label.setObjectName("sectionTitle")
         return label
+
+    def _add_action_button(
+        self, layout: QVBoxLayout, text: str, event_key: str, callback
+    ) -> QPushButton:
+        button = QPushButton(text)
+        button.setProperty("lastPressed", False)
+        button.clicked.connect(callback)
+        self._action_buttons[event_key] = button
+        layout.addWidget(button)
+        return button
+
+    def _set_last_pressed(self, event_key: str, display_name: str | None = None) -> None:
+        label = display_name or event_key.replace("_", " ").title()
+        self.last_pressed_label.setText(f"Last pressed: {label}")
+
+        for key, button in self._action_buttons.items():
+            is_last = key == event_key
+            if button.property("lastPressed") == is_last:
+                continue
+            button.setProperty("lastPressed", is_last)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def change_region(self, *_args):
         self.sio.emit("region", self.region_combo.currentText())
@@ -287,7 +321,7 @@ class ControllerWindow(QMainWindow):
         print(f"Person to invite set to {self.person_to_invite}")
 
     def emit_client_event(self, event, *args):
-        self.last_pressed_label.setText(f"Last pressed: {event}")
+        self._set_last_pressed(event)
         active_clients = list(args) if args else self.client_manager.get_active_clients()
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
@@ -329,6 +363,7 @@ class ControllerWindow(QMainWindow):
         if not active_clients:
             print("No active clients selected for invite request")
             return
+        self._set_last_pressed("invite_request")
         target_client = active_clients[0]
         self.person_to_invite = self.person_to_invite_entry.text()
         self.sio.emit(

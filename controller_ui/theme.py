@@ -34,6 +34,12 @@ QPushButton {
 }
 QPushButton:hover { background-color: #b4befe; }
 QPushButton:pressed { background-color: #74c7ec; }
+QPushButton[lastPressed="true"] {
+    background-color: #a6e3a1;
+    color: #1e1e2e;
+    border: 2px solid #94e2d5;
+}
+QPushButton[lastPressed="true"]:hover { background-color: #b8f0c0; }
 QComboBox, QLineEdit {
     background-color: #313244;
     color: #cdd6f4;
