@@ -18,3 +18,4 @@ packaging
 pyinstaller
 pyscreeze
 pillow
+opencv-python # Needed for image confidence

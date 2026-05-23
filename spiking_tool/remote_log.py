@@ -90,7 +90,7 @@ class _StreamToLogger:
         pass
 
 
-def install_client_remote_logging(level: int = logging.INFO) -> None:
+def install_client_remote_logging(level: int = logging.INFO, *, console_output: bool = False) -> None:
     root = logging.getLogger()
     root.setLevel(level)
     if not any(isinstance(handler, RemoteLogHandler) for handler in root.handlers):
@@ -99,5 +99,16 @@ def install_client_remote_logging(level: int = logging.INFO) -> None:
             logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
         )
         root.addHandler(handler)
-    sys.stdout = _StreamToLogger(logging.INFO)  # type: ignore[assignment]
-    sys.stderr = _StreamToLogger(logging.ERROR)  # type: ignore[assignment]
+    if console_output:
+        if not any(
+            isinstance(handler, logging.StreamHandler) and not isinstance(handler, RemoteLogHandler)
+            for handler in root.handlers
+        ):
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(
+                logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+            )
+            root.addHandler(stream_handler)
+    else:
+        sys.stdout = _StreamToLogger(logging.INFO)  # type: ignore[assignment]
+        sys.stderr = _StreamToLogger(logging.ERROR)  # type: ignore[assignment]
