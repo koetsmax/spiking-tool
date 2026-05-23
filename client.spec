@@ -8,7 +8,7 @@ a = Analysis(
     ['client.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\Max\\Desktop\\spiking-tool\\afk\\anti-afk-v2.exe', 'anti-afk-v2.exe'), ('C:\\Users\\Max\\Desktop\\spiking-tool\\update.ps1', 'update.ps1')],
+    datas=[('C:\\Users\\Max\\Desktop\\spiking-tool\\afk\\v2\\anti-afk-v2.exe', 'anti-afk-v2.exe'), ('C:\\Users\\Max\\Desktop\\spiking-tool\\update.ps1', 'update.ps1')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
