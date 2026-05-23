@@ -11,15 +11,26 @@ from events import EventManager
 class ThreadedSocketClient:
     """Socket.IO client on a background thread for Qt and other non-async UIs."""
 
-    def __init__(self, url, auth):
+    def __init__(self, url, auth, *, autostart: bool = True):
+        self._url = url
+        self._auth = auth
         self.sio = socketio.AsyncClient()
         self.events = EventManager(asyncd=False)
         self.added_events = set()
         self.emit_queue = queue.Queue()
-        self.thread = threading.Thread(
-            target=self._thread_main, args=(url, auth), daemon=True
+        self._thread: threading.Thread | None = None
+        if autostart:
+            self.start()
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._thread = threading.Thread(
+            target=self._thread_main,
+            args=(self._url, self._auth),
+            daemon=True,
         )
-        self.thread.start()
+        self._thread.start()
 
     async def _connection_loop(self, url, auth):
         while True:

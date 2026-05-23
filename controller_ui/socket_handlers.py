@@ -10,24 +10,36 @@ if TYPE_CHECKING:
 
 def register_socket_handlers(controller: "ControllerWindow") -> None:
     @controller.sio.event()
+    def connect():
+        controller.request_client_roster()
+
+    @controller.sio.event()
     def client_connect(data):
         controller.change_region()
         controller.set_port_spike()
         controller.set_desired_port_mode()
         controller.set_auto_spike_mode()
-        for client in data:
-            if client != "Controller" and client not in controller.client_manager.clients:
-                controller.client_manager.add_client(client)
+        controller.client_manager.sync_client_roster(data)
         controller.sort_client_list()
+        controller.logging_tab.sync_client_list(controller._sorted_client_names())
 
     @controller.sio.event()
     def client_disconnect(data):
         for client_name, client in controller.client_manager.clients.copy().items():
-            if client_name not in data:
-                if client.holding:
-                    print(f"{client_name} DISCONNECTED WHILE HOLDING A SHIP!!!!")
-                controller.client_manager.remove_client(client_name)
+            if client_name not in data and client.holding:
+                print(f"{client_name} DISCONNECTED WHILE HOLDING A SHIP!!!!")
+        controller.client_manager.sync_client_roster(data)
         controller.sort_client_list()
+        controller.logging_tab.sync_client_list(controller._sorted_client_names())
+
+    @controller.sio.event()
+    def client_log(data):
+        client_name = data["client"]
+        message = data.get("message", "")
+        if not message:
+            return
+        controller.log_store.append(client_name, message)
+        controller.logging_tab.append_log(client_name, message)
 
     @controller.sio.event()
     def update_status(data):

@@ -150,6 +150,9 @@ class ConnectionManager:
             raise ValueError(f"Invalid endpoint: {endpoint!r}")
         return host, int(port_str)
 
+    def stop(self) -> None:
+        self.is_stopped.set()
+
     def forget_last_match(self):
         """Clear match detection state so the next management server emits join again."""
         with self._match_state_lock:

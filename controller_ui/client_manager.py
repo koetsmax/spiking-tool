@@ -109,7 +109,17 @@ class ClientManager:
         return self.biggest_match
 
     def sort_clients_by_name(self) -> None:
-        def get_numeric_part(key: str) -> int:
-            return int(key[3:])
+        from spiking_tool.client_identity import sort_display_name_key
 
-        self.clients = dict(sorted(self.clients.items(), key=lambda x: get_numeric_part(x[0])))
+        self.clients = dict(
+            sorted(self.clients.items(), key=lambda item: sort_display_name_key(item[0]))
+        )
+
+    def sync_client_roster(self, display_names: list[str]) -> None:
+        incoming = {name for name in display_names if name != "Controller"}
+        for name in list(self.clients.keys()):
+            if name not in incoming:
+                self.remove_client(name)
+        for name in incoming:
+            if name not in self.clients:
+                self.add_client(name)

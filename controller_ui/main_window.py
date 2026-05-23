@@ -22,7 +22,9 @@ from controller_ui.client_columns import (
     configure_client_table,
     populate_client_row,
 )
+from controller_ui.client_log_store import ClientLogStore
 from controller_ui.client_manager import ClientManager
+from controller_ui.logging_tab import LoggingTab
 from controller_ui.socket_handlers import register_socket_handlers
 from sot.Region import core_regions
 from threadedsio import ThreadedSocketClient
@@ -53,8 +55,10 @@ class ControllerWindow(QMainWindow):
         self.sio = sio or ThreadedSocketClient(
             url="http://ashen.spiker.famkoets.nl",
             auth={"name": "Controller", "type": "controller"},
+            autostart=False,
         )
         self.client_manager = ClientManager()
+        self.log_store = ClientLogStore()
         self.desired_port_mode = False
         self.desired_port = None
         self.auto_hold_mode = False
@@ -65,8 +69,13 @@ class ControllerWindow(QMainWindow):
 
         self._build_ui()
         register_socket_handlers(self)
+        if hasattr(self.sio, "start"):
+            self.sio.start()
         self._update_control_states()
         self._update_auto_hold_button()
+
+    def request_client_roster(self) -> None:
+        self.sio.emit("request_roster")
 
     def handle_automation_status(self, data: dict) -> None:
         if self.desired_port_mode and self.desired_port is not None:
@@ -121,17 +130,20 @@ class ControllerWindow(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         root_layout.addWidget(splitter)
 
-        tabs = QTabWidget()
-        tabs.setDocumentMode(True)
-        tabs.addTab(self._build_manual_tab(), "Manual")
-        tabs.addTab(self._build_automated_tab(), "Automated")
-        tabs.addTab(self._build_debug_tab(), "Debug")
-        tabs.setMinimumWidth(320)
-        splitter.addWidget(tabs)
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.addTab(self._build_manual_tab(), "Manual")
+        self.tabs.addTab(self._build_automated_tab(), "Automated")
+        self.logging_tab = LoggingTab(self.log_store)
+        self.tabs.addTab(self.logging_tab, "Logging")
+        self.tabs.addTab(self._build_debug_tab(), "Debug")
+        self.tabs.setMinimumWidth(320)
+        self.tabs.currentChanged.connect(self._on_main_tab_changed)
+        splitter.addWidget(self.tabs)
 
-        clients_panel = QFrame()
-        clients_panel.setObjectName("clientsPanel")
-        clients_layout = QVBoxLayout(clients_panel)
+        self.clients_panel = QFrame()
+        self.clients_panel.setObjectName("clientsPanel")
+        clients_layout = QVBoxLayout(self.clients_panel)
         clients_layout.setContentsMargins(12, 12, 12, 12)
 
         title = QLabel("Clients")
@@ -153,10 +165,24 @@ class ControllerWindow(QMainWindow):
         configure_client_table(self.client_table)
         clients_layout.addWidget(self.client_table, stretch=1)
 
-        splitter.addWidget(clients_panel)
+        splitter.addWidget(self.clients_panel)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([340, 520])
+
+    def _sorted_client_names(self) -> list[str]:
+        self.client_manager.sort_clients_by_name()
+        return [
+            name
+            for name in self.client_manager.clients
+            if name != "Controller"
+        ]
+
+    def _on_main_tab_changed(self, _index: int) -> None:
+        is_logging = self.tabs.currentWidget() is self.logging_tab
+        self.clients_panel.setVisible(not is_logging)
+        if is_logging:
+            self.logging_tab.sync_client_list(self._sorted_client_names())
 
     def _centered_cell_widget(self, widget: QWidget) -> QWidget:
         container = QWidget()
@@ -545,6 +571,9 @@ class ControllerWindow(QMainWindow):
             break
         if client:
             self.emit_client_event("hold_request", client.name)
+
+    def kill_client(self, display_name: str) -> None:
+        self.sio.emit("kill_client", {"clients": [display_name]})
 
     def emit_invite_request(self, *_args):
         active_clients = self.client_manager.get_active_clients()

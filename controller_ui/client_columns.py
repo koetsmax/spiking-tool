@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
@@ -216,6 +217,32 @@ class ClickableStatusLabel(QLabel):
         super().mousePressEvent(event)
 
 
+class KillColumn(ClientColumnSpec):
+    def __init__(self) -> None:
+        super().__init__("kill", "Kill")
+
+    def resize_mode(self) -> QHeaderView.ResizeMode:
+        return QHeaderView.ResizeMode.Fixed
+
+    def fixed_width(self) -> Optional[int]:
+        return 56
+
+    def populate(self, table, row, column_index, client, window) -> None:
+        button = QPushButton("Kill")
+        button.setObjectName("clientKillButton")
+        button.setToolTip("Stop this client process")
+        button.clicked.connect(
+            lambda _checked=False, name=client.name: window.kill_client(name)
+        )
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.addStretch()
+        layout.addWidget(button, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch()
+        table.setCellWidget(row, column_index, container)
+
+
 class StatusColumn(ClientColumnSpec):
     def __init__(self) -> None:
         super().__init__("status", "Status")
@@ -245,6 +272,7 @@ CLIENT_TABLE_COLUMNS: tuple[ClientColumnSpec, ...] = (
     MetricIndicatorColumn("resolution", "Res"),
     ShipColumn(),
     StatusColumn(),
+    KillColumn(),
 )
 
 _METRIC_COLUMNS: dict[str, MetricIndicatorColumn] = {

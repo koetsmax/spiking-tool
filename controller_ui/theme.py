@@ -71,6 +71,14 @@ QPushButton#entryConfirmButton:disabled {
     color: #cdd6f4;
     border: 1px solid #f38ba8;
 }
+QPushButton#clientKillButton {
+    background-color: #f38ba8;
+    color: #1e1e2e;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+QPushButton#clientKillButton:hover:enabled { background-color: #f5a8b8; }
+QPushButton#clientKillButton:pressed:enabled { background-color: #e06c75; }
 QPushButton[lastPressed="true"] {
     background-color: #a6e3a1;
     color: #1e1e2e;
@@ -145,6 +153,30 @@ QHeaderView::section {
     padding: 8px;
     border: none;
     font-weight: 600;
+}
+QListWidget#logClientList {
+    background-color: #181825;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+}
+QListWidget#logClientList::item {
+    padding: 8px;
+}
+QListWidget#logClientList::item:selected {
+    background-color: #45475a;
+    color: #cdd6f4;
+}
+QFrame#logViewerPanel {
+    background-color: #181825;
+    border: 1px solid #45475a;
+    border-radius: 8px;
+}
+QTextEdit#logViewer {
+    background-color: #11111b;
+    color: #cdd6f4;
+    border: none;
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 12px;
 }
 """
 

@@ -17,7 +17,8 @@ import logging
 
 import sot
 from client_handlers import ClientState, register_client_handlers
-from spiking_tool.logging_setup import setup_logging
+from spiking_tool.remote_log import install_client_remote_logging
+from spiking_tool.win_console import hide_console_window
 
 VERSION = "2.4.0"
 logger = logging.getLogger(__name__)
@@ -40,15 +41,22 @@ def get_config():
     return config_file
 
 
+def _show_console() -> bool:
+    return os.environ.get("SPIKING_TOOL_SHOW_CONSOLE", "").lower() in ("1", "true", "yes")
+
+
 async def main():
-    setup_logging()
-    logger.info("checking for updates...")
+    install_client_remote_logging()
+    if not _show_console():
+        hide_console_window()
+
+    logger.info("Checking for updates...")
     request = requests.get(
         "https://api.github.com/repos/koetsmax/spiking-tool/releases/latest",
         timeout=15,
     )
     if request.status_code != 200:
-        print("Failed to check for updates. Error code:", request.status_code)
+        logger.warning("Failed to check for updates. Error code: %s", request.status_code)
     else:
         request_dictionary = request.json()
         online_version = request_dictionary["name"]
@@ -60,20 +68,20 @@ async def main():
             download = requests.get(url, allow_redirects=True, timeout=30)
             with open("TempClient.exe", "wb") as f:
                 f.write(download.content)
-            print("Client updated. Restarting...")
+            logger.info("Client updated. Restarting...")
             subprocess.Popen(["powershell.exe", "-File", "update.ps1"], shell=True)
             sys.exit(0)
-        print("Client up-to-date...")
+        logger.info("Client up to date")
 
-    print("Starting Client...")
-    print("Launching afk macro...")
+    logger.info("Starting client...")
+    logger.info("Launching afk macro...")
     try:
         os.startfile("anti-afk-v2.exe")
-        print("afk macro launched...")
+        logger.info("AFK macro launched")
     except OSError as e:
-        print("Failed to launch afk macro...", e)
+        logger.warning("Failed to launch afk macro: %s", e)
 
-    print("Checking database...")
+    logger.info("Checking database...")
     spike_tool_temp = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool")
     os.makedirs(spike_tool_temp, exist_ok=True)
 
@@ -89,14 +97,14 @@ async def main():
             pass
 
     if timestamp < (int(time.time()) - 86400):
-        print("Database out of date...")
+        logger.info("Database out of date")
         for file in os.listdir(mmdb_folder):
             try:
                 os.remove(os.path.join(mmdb_folder, file))
             except OSError:
                 pass
 
-        print("Downloading new IP database...")
+        logger.info("Downloading new IP database...")
         fname = str(int(time.time())) + ".mmdb"
         tar_name = "mmdb.tar.gz"
         default_name = "GeoLite2-City.mmdb"
@@ -111,9 +119,9 @@ async def main():
             with open(os.path.join(mmdb_folder, fname), "wb") as out:
                 out.write(f.read())
         shutil.rmtree(temp_folder)
-        print("Database updated...")
+        logger.info("Database updated")
     else:
-        print("Database already up-to-date...")
+        logger.info("Database already up to date")
 
     sio = socketio.AsyncClient()
     connection = sot.ConnectionManager()
