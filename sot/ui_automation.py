@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Callable, Literal, Optional, Tuple
+from typing import Awaitable, Callable, Literal, Optional, Tuple
 
 import keyboard
 import pyautogui
@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 SOT_WINDOW_MATCH = "sea of thieves"
 IMAGE_CONFIDENCE = 0.9
 SCREEN_POLL_SECONDS = 0.5
+PROMO_VIDEO_SKIP_SECONDS = 30.0
+PROMO_VIDEO_ESC_GAP_SECONDS = 0.5
 TARGET_CLIENT_WIDTH = 800
 TARGET_CLIENT_HEIGHT = 600
 
@@ -230,7 +232,20 @@ class GameScreenMatcher:
             if self._should_stop():
                 return False
 
-    async def wait_for_play_screen(self) -> bool:
+    async def _dismiss_promo_video(self) -> None:
+        """Skip new-content promo videos (no stable image to match)."""
+        logger.info("No play screen after %.0fs; sending double Esc", PROMO_VIDEO_SKIP_SECONDS)
+        keyboard.press_and_release("esc")
+        await asyncio.sleep(PROMO_VIDEO_ESC_GAP_SECONDS)
+        keyboard.press_and_release("esc")
+
+    async def wait_for_play_screen(
+        self,
+        promo_skip_after_seconds: float = PROMO_VIDEO_SKIP_SECONDS,
+        on_promo_skipped: Optional[Callable[[], Awaitable[None]]] = None,
+    ) -> bool:
+        wait_started_at = time.monotonic()
+        promo_video_dismissed = False
         while True:
             if self.screen_visible("img/play_screen.png"):
                 return True
@@ -238,6 +253,14 @@ class GameScreenMatcher:
                 await asyncio.sleep(0.5)
                 keyboard.press_and_release("esc")
                 print("Declined rejoin prompt")
+            if (
+                not promo_video_dismissed
+                and time.monotonic() - wait_started_at >= promo_skip_after_seconds
+            ):
+                await self._dismiss_promo_video()
+                promo_video_dismissed = True
+                if on_promo_skipped:
+                    await on_promo_skipped()
             print("Waiting for play screen")
             await asyncio.sleep(SCREEN_POLL_SECONDS)
             if self._should_stop():

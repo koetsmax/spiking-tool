@@ -95,8 +95,11 @@ class AutomationManager:
             if self.stop:
                 return False
 
-    async def wait_for_play_screen(self):
-        return await self.screen.wait_for_play_screen()
+    async def wait_for_play_screen(self, sio):
+        async def on_promo_skipped():
+            await sio.emit("update_status", data="Skipped promo video")
+
+        return await self.screen.wait_for_play_screen(on_promo_skipped=on_promo_skipped)
 
     async def dismiss_popup_if_visible(self, image_path):
         await self.screen.dismiss_popup_if_visible(image_path)
@@ -207,7 +210,7 @@ class AutomationManager:
             await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
 
-        if not await self.wait_for_play_screen():
+        if not await self.wait_for_play_screen(sio):
             return
 
         await sio.emit("update_status", data="Waiting for the popup")
