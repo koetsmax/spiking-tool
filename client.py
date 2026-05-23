@@ -61,10 +61,7 @@ async def main():
         request_dictionary = request.json()
         online_version = request_dictionary["name"]
         if version.parse(VERSION) < version.parse(online_version):
-            url = (
-                f"https://github.com/koetsmax/spiking-tool/releases/download/"
-                f"{online_version}/Client.exe"
-            )
+            url = f"https://github.com/koetsmax/spiking-tool/releases/download/" f"{online_version}/Client.exe"
             download = requests.get(url, allow_redirects=True, timeout=30)
             with open("TempClient.exe", "wb") as f:
                 f.write(download.content)
@@ -141,12 +138,40 @@ async def main():
             traceback.print_exc()
 
 
+def _running_frozen() -> bool:
+    return getattr(sys, "frozen", False)
+
+
 if __name__ == "__main__":
     if pyuac.isUserAdmin():
         try:
             asyncio.run(main())
         except Exception:
             traceback.print_exc()
-    else:
-        pyuac.runAsAdmin(wait=False)
+    elif _running_frozen():
+        # Packaged Client.exe — elevation target is the built binary, not venv python.
+        try:
+            pyuac.runAsAdmin(wait=False)
+        except Exception as exc:
+            if getattr(exc, "winerror", None) == 1223:
+                print(
+                    "Admin elevation was blocked or canceled.\n"
+                    "Right-click Client.exe and choose Run as administrator.",
+                    file=sys.stderr,
+                )
+            else:
+                raise
         sys.exit(0)
+    else:
+        print(
+            "This client must run as Administrator (WinDivert packet capture).\n"
+            "Windows often blocks auto-elevation of python.exe as a false positive.\n\n"
+            "Do this instead:\n"
+            "  1. Double-click run_client_admin.bat in the project folder\n"
+            "  2. Or open PowerShell as Administrator, then:\n"
+            "       .\\.venv\\Scripts\\Activate.ps1\n"
+            "       py client.py\n\n"
+            "If Defender still blocks it, run defender_exclusions.ps1 once from admin PowerShell.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
