@@ -35,9 +35,9 @@ QPushButton {
 QPushButton:hover:enabled { background-color: #b4befe; }
 QPushButton:pressed:enabled { background-color: #74c7ec; }
 QPushButton:disabled {
-    background-color: #6e2c2c;
-    color: #cdd6f4;
-    border: 1px solid #f38ba8;
+    background-color: #2a3148;
+    color: #7f849c;
+    border: 1px solid #45475a;
 }
 QPushButton#autoHoldToggleButton[autoHoldActive="false"] {
     background-color: #6c7086;
@@ -67,9 +67,9 @@ QPushButton#entryConfirmButton {
 QPushButton#entryConfirmButton:hover:enabled { background-color: #b8f0c0; }
 QPushButton#entryConfirmButton:pressed:enabled { background-color: #94e2d5; }
 QPushButton#entryConfirmButton:disabled {
-    background-color: #6e2c2c;
-    color: #cdd6f4;
-    border: 1px solid #f38ba8;
+    background-color: #2a3148;
+    color: #7f849c;
+    border: 1px solid #45475a;
 }
 QPushButton#clientKillButton {
     background-color: #f38ba8;
@@ -106,16 +106,16 @@ QCheckBox::indicator:checked {
     border-color: #a6e3a1;
 }
 QCheckBox:disabled {
-    color: #f38ba8;
+    color: #7f849c;
 }
 QCheckBox::indicator:disabled {
-    background-color: #6e2c2c;
-    border-color: #f38ba8;
+    background-color: #2a3148;
+    border-color: #45475a;
 }
 QLineEdit:disabled {
-    background-color: #6e2c2c;
-    color: #a6adc8;
-    border-color: #f38ba8;
+    background-color: #2a3148;
+    color: #7f849c;
+    border-color: #45475a;
 }
 QScrollArea {
     border: 1px solid #45475a;
