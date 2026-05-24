@@ -67,7 +67,6 @@ class AutomationManager:
 
     async def report_game_resolution(self, sio) -> None:
         result = self.check_game_resolution()
-        await sio.emit("update_status", data=result.status_message)
         await self.emit_resolution_metric(sio, result, force=True)
 
     async def wait_for_screen(
