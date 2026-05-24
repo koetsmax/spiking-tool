@@ -13,7 +13,10 @@ def normalize_port_digits(status: Union[int, str]) -> str:
 
 
 def format_client_status(
-    status: Any, current_port: Optional[str]
+    status: Any,
+    current_port: Optional[str],
+    *,
+    current_status: Optional[str] = None,
 ) -> Tuple[str, Optional[str]]:
     """
     Normalize status for the controller client table.
@@ -25,6 +28,9 @@ def format_client_status(
 
     if isinstance(status, int):
         port = normalize_port_digits(status)
-        display = port
+        if current_status == "Awaiting connection":
+            display = f"{port} - awaiting connection"
+        else:
+            display = port
 
     return str(display), port

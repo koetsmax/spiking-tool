@@ -67,7 +67,9 @@ class ClientManager:
         elif not _status_keeps_match_copyable(status, match):
             client.match = None
 
-        display_status, port = format_client_status(status, client.port)
+        display_status, port = format_client_status(
+            status, client.port, current_status=client.status
+        )
         if port is not None:
             client.port = port
         client.status = display_status
