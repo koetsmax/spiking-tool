@@ -9,13 +9,22 @@ if TYPE_CHECKING:
     from spiking_tool.match import MatchDetails
 
 
+_REJOIN_COPYABLE_STATUSES = frozenset({
+    "Rejoining session",
+    "Awaiting rejoin prompt",
+})
+
+
 def _status_keeps_match_copyable(status, match) -> bool:
     if match is not None:
         return True
     if isinstance(status, int):
         return True
-    if isinstance(status, str) and status.startswith("Rejoining "):
-        return True
+    if isinstance(status, str):
+        if status in _REJOIN_COPYABLE_STATUSES:
+            return True
+        if status.startswith("Rejoining "):
+            return True
     return False
 
 
@@ -32,6 +41,7 @@ class Client:
         self.status_label: Optional[QLabel] = None
         self.port: Optional[str] = None
         self.match: Optional["MatchDetails"] = None
+        self.last_match: Optional["MatchDetails"] = None
         self.holding = False
 
 
@@ -64,7 +74,11 @@ class ClientManager:
 
         if match is not None:
             client.match = MatchDetails.from_payload(match)
-        elif not _status_keeps_match_copyable(status, match):
+            client.last_match = client.match
+        elif _status_keeps_match_copyable(status, match):
+            if client.match is None and client.last_match is not None:
+                client.match = client.last_match
+        else:
             client.match = None
 
         display_status, port = format_client_status(
