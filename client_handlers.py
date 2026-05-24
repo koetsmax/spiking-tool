@@ -18,6 +18,7 @@ from spiking_tool.remote_log import remote_log_bridge
 class ClientState:
     def __init__(self) -> None:
         self.prev_port: Optional[int] = None
+        self.connected_once = False
 
 
 def register_client_handlers(
@@ -48,6 +49,7 @@ def register_client_handlers(
 
     @sio.event()
     async def connect():
+        state.connected_once = True
         remote_log_bridge.attach(sio, identity["display_name"])
         remote_log_bridge.start_pump_task()
         asyncio.create_task(automation.emit_resolution_metric(sio, force=True))

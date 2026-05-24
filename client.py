@@ -180,7 +180,8 @@ async def main():
     sio = socketio.AsyncClient()
     connection = sot.ConnectionManager()
     automation = sot.AutomationManager()
-    register_client_handlers(sio, config["name"], connection, automation, ClientState())
+    client_state = ClientState()
+    register_client_handlers(sio, config["name"], connection, automation, client_state)
 
     auth = {"name": config["name"], "type": "client"}
 
@@ -189,9 +190,19 @@ async def main():
             await sio.connect(config["url"], auth=auth)
             await sio.wait()
         except socketio.exceptions.ConnectionError:
-            pass
+            if not client_state.connected_once:
+                logger.error("Unable to connect to server at %s", config["url"])
+                connection.stop()
+                os._exit(1)
+            logger.warning("Disconnected from server, retrying...")
+            await asyncio.sleep(1)
         except Exception:
+            if not client_state.connected_once:
+                logger.exception("Client failed before connecting to server")
+                connection.stop()
+                os._exit(1)
             traceback.print_exc()
+            await asyncio.sleep(1)
 
 
 def _running_frozen() -> bool:
@@ -204,6 +215,7 @@ if __name__ == "__main__":
             asyncio.run(main())
         except Exception:
             traceback.print_exc()
+            sys.exit(1)
     elif _running_frozen():
         # Packaged Client.exe — elevation target is the built binary, not venv python.
         try:
