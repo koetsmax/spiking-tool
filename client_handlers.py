@@ -18,6 +18,7 @@ from spiking_tool.remote_log import remote_log_bridge
 class ClientState:
     def __init__(self) -> None:
         self.prev_port: Optional[int] = None
+        self.connected_once = False
 
 
 def register_client_handlers(
@@ -48,6 +49,7 @@ def register_client_handlers(
 
     @sio.event()
     async def connect():
+        state.connected_once = True
         remote_log_bridge.attach(sio, identity["display_name"])
         remote_log_bridge.start_pump_task()
         asyncio.create_task(automation.emit_resolution_metric(sio, force=True))
@@ -56,13 +58,9 @@ def register_client_handlers(
     async def client_identity(data):
         identity["display_name"] = data["display_name"]
         remote_log_bridge.attach(sio, identity["display_name"])
-        remote_log_bridge.enqueue(
-            f"Assigned controller name: {identity['display_name']}", "INFO"
-        )
+        remote_log_bridge.enqueue(f"Assigned controller name: {identity['display_name']}", "INFO")
 
-    async def run_if_selected(
-        data: list[str], action: Callable[[], Awaitable[Any]]
-    ) -> None:
+    async def run_if_selected(data: list[str], action: Callable[[], Awaitable[Any]]) -> None:
         if is_selected(data):
             await action()
 
@@ -74,6 +72,8 @@ def register_client_handlers(
     @sio.event()
     async def portspiking(data):
         connection.portspike = data
+        if not data:
+            connection.clear_disconnect()
         print(f"Portspiking set to {connection.portspike}")
 
     @sio.event()
@@ -87,11 +87,16 @@ def register_client_handlers(
 
     @sio.event()
     async def sail(data):
-        await run_if_selected(data, lambda: automation.sail(sio, connection.portspike))
+        async def action() -> None:
+            connection.clear_disconnect()
+            await automation.sail(sio, connection.portspike)
+
+        await run_if_selected(data, action)
 
     @sio.event()
     async def rejoin_session(data):
         if is_selected(data):
+            connection.clear_disconnect()
             await automation.rejoin_session(
                 sio,
                 connection.portspike,

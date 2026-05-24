@@ -20,7 +20,7 @@ from client_handlers import ClientState, register_client_handlers
 from spiking_tool.remote_log import install_client_remote_logging
 from spiking_tool.win_console import hide_console_window
 
-VERSION = "3.0.2"
+VERSION = "3.0.3"
 logger = logging.getLogger(__name__)
 
 
@@ -53,8 +53,7 @@ def get_config():
         else:
             config_file["name"] = _default_client_name()
             logger.warning(
-                "%s not found and no interactive console; using client name %r "
-                "(set SPIKING_TOOL_CLIENT_NAME to override, or add show_console = true to config)",
+                "%s not found and no interactive console; using client name %r " "(set SPIKING_TOOL_CLIENT_NAME to override, or add show_console = true to config)",
                 config_path,
                 config_file["name"],
             )
@@ -181,7 +180,8 @@ async def main():
     sio = socketio.AsyncClient()
     connection = sot.ConnectionManager()
     automation = sot.AutomationManager()
-    register_client_handlers(sio, config["name"], connection, automation, ClientState())
+    client_state = ClientState()
+    register_client_handlers(sio, config["name"], connection, automation, client_state)
 
     auth = {"name": config["name"], "type": "client"}
 
@@ -190,9 +190,19 @@ async def main():
             await sio.connect(config["url"], auth=auth)
             await sio.wait()
         except socketio.exceptions.ConnectionError:
-            pass
+            if not client_state.connected_once:
+                logger.error("Unable to connect to server at %s", config["url"])
+                connection.stop()
+                os._exit(1)
+            logger.warning("Disconnected from server, retrying...")
+            await asyncio.sleep(1)
         except Exception:
+            if not client_state.connected_once:
+                logger.exception("Client failed before connecting to server")
+                connection.stop()
+                os._exit(1)
             traceback.print_exc()
+            await asyncio.sleep(1)
 
 
 def _running_frozen() -> bool:
@@ -205,6 +215,7 @@ if __name__ == "__main__":
             asyncio.run(main())
         except Exception:
             traceback.print_exc()
+            sys.exit(1)
     elif _running_frozen():
         # Packaged Client.exe — elevation target is the built binary, not venv python.
         try:
@@ -212,8 +223,7 @@ if __name__ == "__main__":
         except Exception as exc:
             if getattr(exc, "winerror", None) == 1223:
                 print(
-                    "Admin elevation was blocked or canceled.\n"
-                    "Right-click Client.exe and choose Run as administrator.",
+                    "Admin elevation was blocked or canceled.\n" "Right-click Client.exe and choose Run as administrator.",
                     file=sys.stderr,
                 )
             else:

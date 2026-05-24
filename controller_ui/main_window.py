@@ -550,6 +550,7 @@ class ControllerWindow(QMainWindow):
                 if client:
                     client.port = None
                     client.match = None
+                    client.last_match = None
                     client.status = "Pending..."
                     if client.status_label:
                         client.status_label.setText(client.status)

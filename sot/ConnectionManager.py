@@ -24,6 +24,7 @@ from .Region import region_from_name
 MATCH_IDLE_SECONDS = 20
 REGION_DELAY_SECONDS = 0.5
 DISCONNECT_COOLDOWN_NS = 5 * 1_000_000_000
+PORTSPIKE_DISCONNECT_COOLDOWN_NS = 60 * 1_000_000_000
 
 
 class ConnectionManager:
@@ -64,6 +65,7 @@ class ConnectionManager:
             self._match_id = None
             self._match_last_gs_time = None
             self._match_last_packet_time = None
+            self._last_emitted_join: tuple[str, tuple[str, int, str, int]] | None = None
 
             mmdb_folder = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "mmdb")
             self.mmlocation = os.path.join(mmdb_folder, os.listdir(mmdb_folder)[0])
@@ -72,9 +74,7 @@ class ConnectionManager:
 
             self.thread_divert = threading.Thread(target=self._divert_SoT, daemon=True)
             self.thread_monitor = threading.Thread(target=self._monitor_SoT, daemon=True)
-            self.thread_delay_sender = threading.Thread(
-                target=self._delayed_sender, daemon=True
-            )
+            self.thread_delay_sender = threading.Thread(target=self._delayed_sender, daemon=True)
             self.thread_divert.start()
             self.thread_monitor.start()
             self.thread_delay_sender.start()
@@ -82,14 +82,24 @@ class ConnectionManager:
         except Exception:
             traceback.print_exc()
 
+    def _disconnect_cooldown_ns(self) -> int:
+        return PORTSPIKE_DISCONNECT_COOLDOWN_NS if self.portspike else DISCONNECT_COOLDOWN_NS
+
+    def _trigger_disconnect(self) -> None:
+        self.disconnect = True
+        self.force_disconnect = True
+        self.timeout = monotonic_ns()
+
+    def clear_disconnect(self) -> None:
+        self.disconnect = False
+        self.force_disconnect = False
+
     def _should_drop_packet(self) -> bool:
-        if self.force_disconnect:
+        if self.force_disconnect or self.disconnect:
+            if self.disconnect and monotonic_ns() - self.timeout > self._disconnect_cooldown_ns():
+                self.clear_disconnect()
+                return False
             return True
-        if self.disconnect:
-            if monotonic_ns() - self.timeout > DISCONNECT_COOLDOWN_NS:
-                self.disconnect = False
-            else:
-                return True
         return False
 
     def resolve_location(self, addr: str) -> LocationResult:
@@ -100,11 +110,7 @@ class ConnectionManager:
                 match = self.reader.get("0.0.0.0")
         location = apply_location_override(addr, match)
         if location.is_override:
-            print(
-                f"GeoIP override: {location.override_name} | {addr} | "
-                f"{location.raw.city}, {location.raw.country} -> "
-                f"{location.city}, {location.country}"
-            )
+            print(f"GeoIP override: {location.override_name} | {addr} | " f"{location.raw.city}, {location.raw.country} -> " f"{location.city}, {location.country}")
         return location
 
     def update_matchmaking_override_state(self, addr: str, location: LocationResult):
@@ -112,20 +118,14 @@ class ConnectionManager:
         if location.is_override:
             with self._matchmaking_override_lock:
                 self._matchmaking_overrides.add(region_key)
-            print(
-                f"Matchmaking override recorded: {location.override_name} | "
-                f"{addr} | {location.city}, {location.country}"
-            )
+            print(f"Matchmaking override recorded: {location.override_name} | " f"{addr} | {location.city}, {location.country}")
         else:
             with self._matchmaking_override_lock:
                 had_override = region_key in self._matchmaking_overrides
                 if had_override:
                     self._matchmaking_overrides.remove(region_key)
             if had_override:
-                print(
-                    f"Matchmaking override cleared: {addr} | "
-                    f"{location.city}, {location.country}"
-                )
+                print(f"Matchmaking override cleared: {addr} | " f"{location.city}, {location.country}")
 
     def has_matchmaking_override(self, location: LocationResult) -> bool:
         region_key = get_location_region_key(location)
@@ -161,6 +161,7 @@ class ConnectionManager:
             self._match_id = None
             self._match_last_gs_time = None
             self._match_last_packet_time = None
+        self._last_emitted_join = None
         print("Match state cleared — waiting for next management server")
 
     def _log_match(self, match_type: str, match_id: str, addr: str, port: int, display_location: str, match_text: str):
@@ -227,6 +228,8 @@ class ConnectionManager:
                 return
 
             if self._should_drop_packet():
+                with self._match_state_lock:
+                    self._match_last_packet_time = time.monotonic()
                 continue
 
             if packet.payload is None:
@@ -261,18 +264,10 @@ class ConnectionManager:
                 last_gs_time = self._match_last_gs_time
                 last_packet_time = self._match_last_packet_time
 
-                new_activity = (
-                    current != game_server
-                    and current != management_server
-                ) or last_packet_time is None or (now - last_packet_time) > MATCH_IDLE_SECONDS
+                new_activity = (current != game_server and current != management_server) or last_packet_time is None or (now - last_packet_time) > MATCH_IDLE_SECONDS
 
                 if new_activity:
-                    if (
-                        management_server is not None
-                        or (game_server is None and management_server is None)
-                        or last_gs_time is None
-                        or (now - last_gs_time) > MATCH_IDLE_SECONDS
-                    ):
+                    if management_server is not None or (game_server is None and management_server is None) or last_gs_time is None or (now - last_gs_time) > MATCH_IDLE_SECONDS:
                         self._match_management_server = None
                         match_id = self.generate_match_id()
                         self._match_id = match_id
@@ -282,20 +277,14 @@ class ConnectionManager:
                         location = self.resolve_location(addr)
                         display_location = self.build_display_location(location)
                         match_text = f"Game server:\n{display_location}\n{current}"
-                        self._log_match(
-                            match_type, match_id, addr, port, display_location, match_text
-                        )
+                        self._log_match(match_type, match_id, addr, port, display_location, match_text)
                     else:
                         self._match_management_server = current
                         match_type = "management"
                         location = self.resolve_location(addr)
                         display_location = self.build_display_location(location)
-                        match_text = (
-                            f"Management server:\n{display_location}\n{current}"
-                        )
-                        self._log_match(
-                            match_type, match_id, addr, port, display_location, match_text
-                        )
+                        match_text = f"Management server:\n{display_location}\n{current}"
+                        self._log_match(match_type, match_id, addr, port, display_location, match_text)
                         emit_join = True
 
                 self._match_last_packet_time = now
@@ -307,22 +296,33 @@ class ConnectionManager:
                     if game_endpoint is None:
                         raise RuntimeError("Management server matched without game server")
                     game_ip, game_port = self._parse_endpoint(game_endpoint)
-                    game_location = self.resolve_location(game_ip)
-                    region = self.build_display_location(game_location)
-                    self.events.join(  # pylint: disable=no-member
-                        {
-                            "game_ip": game_ip,
-                            "game_port": game_port,
-                            "management_ip": addr,
-                            "management_port": port,
-                            "region": region,
-                        }
-                    )
+                    join_key = (game_ip, game_port, addr, port)
+                    should_emit = True
+                    with self._match_state_lock:
+                        current_match_id = self._match_id
+                        emitted = (current_match_id, join_key)
+                        if emitted == self._last_emitted_join:
+                            should_emit = False
+                        else:
+                            self._last_emitted_join = emitted
+                    if should_emit:
+                        game_location = self.resolve_location(game_ip)
+                        region = self.build_display_location(game_location)
+                        self.events.join(  # pylint: disable=no-member
+                            {
+                                "game_ip": game_ip,
+                                "game_port": game_port,
+                                "management_ip": addr,
+                                "management_port": port,
+                                "region": region,
+                            }
+                        )
+                    if self.portspike:
+                        self._trigger_disconnect()
                 except Exception:
                     traceback.print_exc()
-                if self.portspike:
-                    self.disconnect = True
-                    self.timeout = monotonic_ns()
+            if self._should_drop_packet():
+                continue
             try:
                 self._winMonitor.send(packet)
             except Exception:
@@ -351,9 +351,7 @@ class ConnectionManager:
     def _monitor_SoT(self):
         while not self.is_stopped.is_set():
             try:
-                self._winMonitor = pydivert.WinDivert(
-                    "udp.DstPort >= 30000 and udp.DstPort <= 32000"
-                )
+                self._winMonitor = pydivert.WinDivert("udp.DstPort >= 30000 and udp.DstPort <= 32000")
                 time.sleep(1)
                 self._winMonitor.open()
                 print("WinMonitor opened successfully")
