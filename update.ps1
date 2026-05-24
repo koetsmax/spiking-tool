@@ -1,6 +1,24 @@
-Start-Sleep -s 2
-Remove-Item -Path C:\Users\sot\Desktop\client.exe
-Start-Sleep -s 2
-Rename-Item -Path C:\Users\sot\Desktop\TempClient.exe -NewName client.exe
-# launch the file called Client.exe on the desktop
-Start-Process -FilePath C:\Users\sot\Desktop\client.exe
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$CurrentExe,
+    [Parameter(Mandatory = $true)]
+    [string]$NewExe,
+    [Parameter(Mandatory = $true)]
+    [int]$PidToWait
+)
+
+$ErrorActionPreference = "Stop"
+
+for ($i = 0; $i -lt 120; $i++) {
+    if (-not (Get-Process -Id $PidToWait -ErrorAction SilentlyContinue)) {
+        break
+    }
+    Start-Sleep -Milliseconds 500
+}
+Start-Sleep -Seconds 1
+
+if (Test-Path $CurrentExe) {
+    Remove-Item -Path $CurrentExe -Force
+}
+Move-Item -Path $NewExe -Destination $CurrentExe -Force
+Start-Process -FilePath $CurrentExe
