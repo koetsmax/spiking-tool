@@ -20,7 +20,7 @@ from spiking_tool.local_log import install_client_local_file_logging
 from spiking_tool.remote_log import install_client_remote_logging
 from spiking_tool.win_console import hide_console_window
 
-VERSION = "3.0.3"
+VERSION = "3.1.0"
 logger = logging.getLogger(__name__)
 
 
