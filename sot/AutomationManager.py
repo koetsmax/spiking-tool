@@ -179,11 +179,9 @@ class AutomationManager:
             await asyncio.sleep(0.2)
             keyboard.press_and_release("esc")
             await asyncio.sleep(1.2)
-            for _ in range(7):
+            for _ in range(8):
                 keyboard.press_and_release("down")
                 await asyncio.sleep(0.3)
-            keyboard.press_and_release("up")
-            await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
