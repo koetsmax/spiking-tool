@@ -1,7 +1,6 @@
 import asyncio
 import os
 import shutil
-import subprocess
 import sys
 import tarfile
 import time
@@ -11,16 +10,17 @@ import pyuac
 import requests
 import socketio
 import tomlkit
-from packaging import version
 
 import logging
 
 import sot
 from client_handlers import ClientState, register_client_handlers
+from spiking_tool.client_update import maybe_update_client
+from spiking_tool.local_log import install_client_local_file_logging
 from spiking_tool.remote_log import install_client_remote_logging
 from spiking_tool.win_console import hide_console_window
 
-VERSION = "3.0.3"
+VERSION = "3.1.0"
 logger = logging.getLogger(__name__)
 
 
@@ -97,6 +97,7 @@ def _afk_exe_path() -> str:
 
 async def main():
     show_console = _show_console()
+    install_client_local_file_logging()
     install_client_remote_logging(console_output=show_console)
     if not show_console:
         hide_console_window()
@@ -104,24 +105,8 @@ async def main():
     config = get_config()
 
     logger.info("Checking for updates...")
-    request = requests.get(
-        "https://api.github.com/repos/koetsmax/spiking-tool/releases/latest",
-        timeout=15,
-    )
-    if request.status_code != 200:
-        logger.warning("Failed to check for updates. Error code: %s", request.status_code)
-    else:
-        request_dictionary = request.json()
-        online_version = request_dictionary["name"]
-        if version.parse(VERSION) < version.parse(online_version):
-            url = f"https://github.com/koetsmax/spiking-tool/releases/download/" f"{online_version}/Client.exe"
-            download = requests.get(url, allow_redirects=True, timeout=30)
-            with open("TempClient.exe", "wb") as f:
-                f.write(download.content)
-            logger.info("Client updated. Restarting...")
-            subprocess.Popen(["powershell.exe", "-File", "update.ps1"], shell=True)
-            sys.exit(0)
-        logger.info("Client up to date")
+    if maybe_update_client(VERSION):
+        sys.exit(0)
 
     logger.info("Starting client...")
     logger.info("Launching afk macro...")
