@@ -134,6 +134,8 @@ class AutomationManager:
             return
         await sio.emit("update_status", data="Rejoining session")
         await asyncio.sleep(0.5)
+        self.activate_window()
+        await asyncio.sleep(0.2)
 
         if not await self.wait_for_screen(
             sio,
@@ -145,9 +147,7 @@ class AutomationManager:
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.3)
         await sio.emit("update_status", data="Awaiting rejoin prompt")
-        if not await self.wait_for_screen(
-            sio, "img/rejoin_prompt.png", "waiting for rejoin prompt"
-        ):
+        if not await self.wait_for_screen(sio, "img/rejoin_prompt.png", "waiting for rejoin prompt"):
             return
 
         keyboard.press_and_release("enter")
@@ -157,6 +157,8 @@ class AutomationManager:
     async def reset(self, sio, leave, portspiking):
         if portspiking:
             await sio.emit("update_status", data="Awaiting connection")
+            self.activate_window()
+            await asyncio.sleep(0.2)
             if not await self.wait_for_screen(
                 sio,
                 "img/portspike_connected.png",
@@ -167,9 +169,7 @@ class AutomationManager:
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
             await sio.emit("update_status", data="Awaiting rejoin prompt")
-            if not await self.wait_for_screen(
-                sio, "img/rejoin_prompt.png", "waiting for rejoin prompt"
-            ):
+            if not await self.wait_for_screen(sio, "img/rejoin_prompt.png", "waiting for rejoin prompt"):
                 return
 
             keyboard.press_and_release("esc")
@@ -263,9 +263,7 @@ class AutomationManager:
         await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
 
-        if not await self.wait_for_screen(
-            sio, "img/sail_screen.png", "Waiting for sail screen"
-        ):
+        if not await self.wait_for_screen(sio, "img/sail_screen.png", "Waiting for sail screen"):
             return
 
         await sio.emit("update_status", data="Ready")
