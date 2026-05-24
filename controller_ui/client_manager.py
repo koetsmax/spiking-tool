@@ -9,6 +9,16 @@ if TYPE_CHECKING:
     from spiking_tool.match import MatchDetails
 
 
+def _status_keeps_match_copyable(status, match) -> bool:
+    if match is not None:
+        return True
+    if isinstance(status, int):
+        return True
+    if isinstance(status, str) and status.startswith("Rejoining "):
+        return True
+    return False
+
+
 class Client:
     def __init__(self, name: str) -> None:
         self.name = name
@@ -54,6 +64,8 @@ class ClientManager:
 
         if match is not None:
             client.match = MatchDetails.from_payload(match)
+        elif not _status_keeps_match_copyable(status, match):
+            client.match = None
 
         display_status, port = format_client_status(status, client.port)
         if port is not None:
