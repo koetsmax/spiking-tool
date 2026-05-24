@@ -95,6 +95,11 @@ def _afk_exe_path() -> str:
     return os.path.join(_app_dir(), "afk", "v2", "anti-afk-v2.exe")
 
 
+def _release_version(tag_name: str) -> str:
+    """Normalize a GitHub release tag for version comparison."""
+    return tag_name.lstrip("vV")
+
+
 async def main():
     show_console = _show_console()
     install_client_remote_logging(console_output=show_console)
@@ -112,9 +117,13 @@ async def main():
         logger.warning("Failed to check for updates. Error code: %s", request.status_code)
     else:
         request_dictionary = request.json()
-        online_version = request_dictionary["name"]
+        release_tag = request_dictionary["tag_name"]
+        online_version = _release_version(release_tag)
         if version.parse(VERSION) < version.parse(online_version):
-            url = f"https://github.com/koetsmax/spiking-tool/releases/download/" f"{online_version}/Client.exe"
+            url = (
+                f"https://github.com/koetsmax/spiking-tool/releases/download/"
+                f"{release_tag}/Client.exe"
+            )
             download = requests.get(url, allow_redirects=True, timeout=30)
             with open("TempClient.exe", "wb") as f:
                 f.write(download.content)
