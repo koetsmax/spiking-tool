@@ -53,8 +53,7 @@ def get_config():
         else:
             config_file["name"] = _default_client_name()
             logger.warning(
-                "%s not found and no interactive console; using client name %r "
-                "(set SPIKING_TOOL_CLIENT_NAME to override, or add show_console = true to config)",
+                "%s not found and no interactive console; using client name %r " "(set SPIKING_TOOL_CLIENT_NAME to override, or add show_console = true to config)",
                 config_path,
                 config_file["name"],
             )
@@ -212,8 +211,7 @@ if __name__ == "__main__":
         except Exception as exc:
             if getattr(exc, "winerror", None) == 1223:
                 print(
-                    "Admin elevation was blocked or canceled.\n"
-                    "Right-click Client.exe and choose Run as administrator.",
+                    "Admin elevation was blocked or canceled.\n" "Right-click Client.exe and choose Run as administrator.",
                     file=sys.stderr,
                 )
             else:
