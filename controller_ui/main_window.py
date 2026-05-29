@@ -81,6 +81,39 @@ class ControllerWindow(QMainWindow):
     def request_client_roster(self) -> None:
         self.sio.emit("request_roster")
 
+    @staticmethod
+    def _client_is_ready(status: str) -> bool:
+        return status == "Ready" or status.endswith(" - Ready")
+
+    def _evaluate_auto_spike_state(self) -> None:
+        if not self.auto_spike_mode or self.number_of_ships is None:
+            return
+
+        all_clients_matched = True
+        all_clients_ready = True
+        for client in self.client_manager.clients.values():
+            if client.port is None:
+                all_clients_matched = False
+            if not self._client_is_ready(str(client.status)):
+                all_clients_ready = False
+
+        if all_clients_matched:
+            for client in self.client_manager.clients.values():
+                if self.client_manager.biggest_match >= int(self.number_of_ships):
+                    print(
+                        f"----------------------MATCH OF {self.number_of_ships} "
+                        f"FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------"
+                    )
+                else:
+                    print(
+                        f"no match of {self.number_of_ships} found. "
+                        f"Biggest match was {self.client_manager.biggest_match} ships"
+                    )
+                    self.emit_client_event("reset", client.name)
+
+        if all_clients_ready:
+            self.emit_sail_staggered()
+
     def handle_automation_status(self, data: dict) -> None:
         if self.desired_port_mode and self.desired_port is not None:
             client = self.client_manager.get_client(data["client"])
@@ -100,29 +133,8 @@ class ControllerWindow(QMainWindow):
             elif data["status"] == "Ready":
                 self.emit_sail_staggered([client.name])
 
-        elif self.auto_spike_mode and self.number_of_ships is not None:
-            all_clients_matched = True
-            all_client_ready = True
-            for client in self.client_manager.clients.values():
-                if client.port is None:
-                    all_clients_matched = False
-                if client.status != "Ready":
-                    all_client_ready = False
-            if all_clients_matched:
-                for client in self.client_manager.clients.values():
-                    if self.client_manager.biggest_match >= int(self.number_of_ships):
-                        print(
-                            f"----------------------MATCH OF {self.number_of_ships} "
-                            f"FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------"
-                        )
-                    else:
-                        print(
-                            f"no match of {self.number_of_ships} found. "
-                            f"Biggest match was {self.client_manager.biggest_match} ships"
-                        )
-                        self.emit_client_event("reset", client.name)
-            if all_client_ready:
-                self.emit_sail_staggered()
+        elif self.auto_spike_mode:
+            self._evaluate_auto_spike_state()
 
     def _build_ui(self):
         central = QWidget()
@@ -542,6 +554,8 @@ class ControllerWindow(QMainWindow):
             self.desired_port_entry.clear()
         print(f"Auto spike mode set to {self.auto_spike_mode}")
         self._update_control_states()
+        if self.auto_spike_mode:
+            self._evaluate_auto_spike_state()
 
     def set_number_of_ships(self, *_args):
         ships = self.number_of_ships_entry.text().strip()
@@ -549,6 +563,8 @@ class ControllerWindow(QMainWindow):
             return
         self.number_of_ships = ships
         print(f"Number of ships set to {self.number_of_ships}")
+        if self.auto_spike_mode:
+            self._evaluate_auto_spike_state()
 
     def set_person_to_invite(self, *_args):
         self.person_to_invite = self.person_to_invite_entry.text()
