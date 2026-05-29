@@ -15,11 +15,9 @@ import win32process
 
 logger = logging.getLogger(__name__)
 
-SOT_WINDOW_MATCH = "sea of thieves"
 SOTGAME_PROCESS = "sotgame.exe"
-EAC_PROCESS_PREFIX = "easyanticheat"
-EAC_WAIT_POLL_SECONDS = 0.5
-EAC_WAIT_TIMEOUT_SECONDS = 300.0
+# EAC bootstrapper parent process (not the game — the game is SoTGame.exe).
+BOOTSTRAPPER_PROCESS = "seaofthieves.exe"
 GAME_CLOSE_POLL_SECONDS = 0.5
 GAME_CLOSE_TIMEOUT_SECONDS = 30.0
 IMAGE_CONFIDENCE = 0.9
@@ -47,9 +45,7 @@ class ResolutionCheckResult:
         if self.status == "ok":
             return "Resolution OK (800x600)"
         if self.status == "resized":
-            return (
-                f"Resized to 800x600 (was {self.previous_width}x{self.previous_height})"
-            )
+            return f"Resized to 800x600 (was {self.previous_width}x{self.previous_height})"
         if self.status == "no_window":
             return "SoT window not found"
         return f"Wrong resolution {self.width}x{self.height} (need 800x600)"
@@ -74,56 +70,79 @@ class GameScreenMatcher:
             return None
 
     @staticmethod
-    def _is_eac_launcher(hwnd) -> bool:
-        process_name = GameScreenMatcher._hwnd_process_name(hwnd)
-        if not process_name:
-            return False
-        return process_name.startswith(EAC_PROCESS_PREFIX)
-
-    @staticmethod
-    def eac_launcher_visible() -> bool:
-        top_windows = []
-        win32gui.EnumWindows(GameScreenMatcher._window_enumeration_handler, top_windows)  # pylint: disable=c-extension-no-member
-        for hwnd, _title in top_windows:
-            if not win32gui.IsWindowVisible(hwnd):  # pylint: disable=c-extension-no-member
+    def _process_running(process_name: str) -> bool:
+        for proc in psutil.process_iter(["name"]):
+            try:
+                if proc.info.get("name", "").lower() == process_name:
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-            if GameScreenMatcher._is_eac_launcher(hwnd):
-                return True
         return False
 
-    def wait_for_eac_launcher_gone(
+    @staticmethod
+    def sotgame_pids() -> set[int]:
+        pids: set[int] = set()
+        for proc in psutil.process_iter(["name", "pid"]):
+            try:
+                if proc.info.get("name", "").lower() == SOTGAME_PROCESS:
+                    pids.add(int(proc.info["pid"]))
+            except (psutil.NoSuchProcess, psutil.AccessDenied, TypeError, ValueError):
+                continue
+        return pids
+
+    @staticmethod
+    def should_skip_resize() -> bool:
+        """Skip while the EAC bootstrapper is still running or the game has not started."""
+        if GameScreenMatcher._process_running(BOOTSTRAPPER_PROCESS):
+            return True
+        return not GameScreenMatcher.sotgame_running()
+
+    def wait_until_ready_to_resize(
         self,
-        timeout_seconds: float = EAC_WAIT_TIMEOUT_SECONDS,
+        timeout_seconds: float = 120.0,
     ) -> bool:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
-            if not self.eac_launcher_visible():
+            if not self.should_skip_resize() and self.find_sot_hwnd() is not None:
                 return True
             if self._should_stop():
                 return False
-            time.sleep(EAC_WAIT_POLL_SECONDS)
-        logger.warning("Timed out waiting for EAC launcher to close")
+            time.sleep(0.5)
         return False
 
-    def find_sot_hwnd(self, window_match: str = SOT_WINDOW_MATCH):
-        top_windows = []
-        win32gui.EnumWindows(self._window_enumeration_handler, top_windows)  # pylint: disable=c-extension-no-member
-        title_match = None
-        for hwnd, title in top_windows:
-            if not win32gui.IsWindowVisible(hwnd):  # pylint: disable=c-extension-no-member
-                continue
-            process_name = self._hwnd_process_name(hwnd)
-            if process_name == SOTGAME_PROCESS:
-                return hwnd
-            if window_match in title.lower() and not self._is_eac_launcher(hwnd):
-                title_match = hwnd
-        return title_match
+    def find_sot_hwnd(self):
+        """Return the main top-level window owned by SoTGame.exe."""
+        game_pids = self.sotgame_pids()
+        if not game_pids:
+            return None
 
-    def _wait_for_game_window_before_resize(self) -> bool:
-        if not self.eac_launcher_visible():
+        candidates: list[tuple[int, int, bool]] = []
+
+        def callback(hwnd, _extra) -> bool:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)  # pylint: disable=c-extension-no-member
+            if pid not in game_pids:
+                return True
+            if not win32gui.IsWindow(hwnd):  # pylint: disable=c-extension-no-member
+                return True
+            style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)  # pylint: disable=c-extension-no-member
+            if style & win32con.WS_CHILD:
+                return True
+            width, height = self.get_client_size(hwnd)
+            if width < 100 or height < 100:
+                return True
+            candidates.append(
+                (hwnd, width * height, bool(win32gui.IsWindowVisible(hwnd)))  # pylint: disable=c-extension-no-member
+            )
             return True
-        logger.info("Waiting for EAC launcher to close before resizing the game window")
-        return self.wait_for_eac_launcher_gone()
+
+        win32gui.EnumWindows(callback, None)  # pylint: disable=c-extension-no-member
+        if not candidates:
+            logger.debug("No top-level windows found for %s (pids=%s)", SOTGAME_PROCESS, game_pids)
+            return None
+
+        visible = [candidate for candidate in candidates if candidate[2]]
+        pool = visible or candidates
+        return max(pool, key=lambda candidate: candidate[1])[0]
 
     @staticmethod
     def sotgame_running() -> bool:
@@ -227,7 +246,7 @@ class GameScreenMatcher:
         target_width: int = TARGET_CLIENT_WIDTH,
         target_height: int = TARGET_CLIENT_HEIGHT,
     ) -> ResolutionCheckResult:
-        if self.eac_launcher_visible():
+        if self.should_skip_resize():
             return ResolutionCheckResult(status="no_window")
 
         hwnd = self.find_sot_hwnd()
@@ -252,18 +271,25 @@ class GameScreenMatcher:
         if check.status in ("ok", "no_window"):
             return check
 
-        if not self._wait_for_game_window_before_resize():
+        if self.should_skip_resize():
+            logger.debug("Skipping resize until SoTGame.exe is ready")
             return ResolutionCheckResult(status="no_window")
 
         hwnd = self.find_sot_hwnd()
-        assert hwnd is not None
+        if hwnd is None:
+            return ResolutionCheckResult(status="no_window")
         width, height = check.width, check.height
         previous_width, previous_height = width, height
+        logger.info(
+            "Resizing SoTGame window from %sx%s to %sx%s",
+            previous_width,
+            previous_height,
+            target_width,
+            target_height,
+        )
 
         def resize_window() -> Tuple[int, int]:
-            outer_width, outer_height = self._outer_size_for_client(
-                hwnd, target_width, target_height
-            )
+            outer_width, outer_height = self._outer_size_for_client(hwnd, target_width, target_height)
             win32gui.SetWindowPos(  # pylint: disable=c-extension-no-member
                 hwnd,
                 win32con.HWND_TOP,
@@ -367,9 +393,7 @@ class GameScreenMatcher:
         except pyautogui.ImageNotFoundException:
             return False
 
-    async def wait_for_screen(
-        self, image_path: str, message: Optional[str] = None, confidence: float = IMAGE_CONFIDENCE
-    ) -> bool:
+    async def wait_for_screen(self, image_path: str, message: Optional[str] = None, confidence: float = IMAGE_CONFIDENCE) -> bool:
         while True:
             if self.screen_visible(image_path, confidence):
                 return True
@@ -400,10 +424,7 @@ class GameScreenMatcher:
                 await asyncio.sleep(0.5)
                 keyboard.press_and_release("esc")
                 print("Declined rejoin prompt")
-            if (
-                not promo_video_dismissed
-                and time.monotonic() - wait_started_at >= promo_skip_after_seconds
-            ):
+            if not promo_video_dismissed and time.monotonic() - wait_started_at >= promo_skip_after_seconds:
                 await self._dismiss_promo_video()
                 promo_video_dismissed = True
                 if on_promo_skipped:
@@ -419,8 +440,8 @@ class GameScreenMatcher:
             await asyncio.sleep(0.5)
             print("Closed popup")
 
-    def activate_window(self, window_match: str = SOT_WINDOW_MATCH) -> None:
-        hwnd = self.find_sot_hwnd(window_match)
+    def activate_window(self) -> None:
+        hwnd = self.find_sot_hwnd()
         if hwnd:
             win32gui.ShowWindow(hwnd, 5)  # pylint: disable=c-extension-no-member
             keyboard.press_and_release("alt")

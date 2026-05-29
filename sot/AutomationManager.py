@@ -64,17 +64,15 @@ class AutomationManager:
         )
 
     async def _maybe_fix_and_report_resolution(self, sio) -> None:
-        check = self.screen.check_target_resolution()
-        if check.status == "no_window":
+        if self.screen.should_skip_resize():
+            check = self.screen.check_target_resolution()
             await self.emit_resolution_metric(sio, check)
             return
-        if check.status != "ok":
-            result = self.screen.ensure_target_resolution()
-            await self.emit_resolution_metric(sio, result)
-        else:
-            await self.emit_resolution_metric(sio, check)
+        result = self.screen.ensure_target_resolution()
+        await self.emit_resolution_metric(sio, result, force=True)
 
     async def report_game_resolution(self, sio) -> None:
+        await asyncio.to_thread(self.screen.wait_until_ready_to_resize, 120.0)
         result = self.check_game_resolution()
         await self.emit_resolution_metric(sio, result, force=True)
 
@@ -91,12 +89,12 @@ class AutomationManager:
 
         polls = 0
         while True:
+            if polls % 5 == 0:
+                await self._maybe_fix_and_report_resolution(sio)
             if self.screen.screen_visible(image_path):
-                await self.emit_resolution_metric(sio)
+                await self._maybe_fix_and_report_resolution(sio)
                 return True
             polls += 1
-            if polls % 20 == 0:
-                await self._maybe_fix_and_report_resolution(sio)
             if message:
                 print(message)
             await asyncio.sleep(SCREEN_POLL_SECONDS)
