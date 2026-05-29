@@ -4,6 +4,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -27,6 +29,7 @@ from controller_ui.client_manager import ClientManager
 from controller_ui.logging_tab import LoggingTab
 from controller_ui.socket_handlers import register_socket_handlers
 from sot.Region import core_regions
+from spiking_tool.ship_sail_delay import compute_sail_delay
 from threadedsio import ThreadedSocketClient
 
 _TIP_PORT_SPIKE_REQUIRED = "Enable Port spike first."
@@ -66,6 +69,7 @@ class ControllerWindow(QMainWindow):
         self.number_of_ships = None
         self.person_to_invite = None
         self._action_buttons: dict[str, QPushButton] = {}
+        self._ship_sail_cooldown_spinboxes: dict[str, QDoubleSpinBox] = {}
 
         self._build_ui()
         register_socket_handlers(self)
@@ -76,6 +80,39 @@ class ControllerWindow(QMainWindow):
 
     def request_client_roster(self) -> None:
         self.sio.emit("request_roster")
+
+    @staticmethod
+    def _client_is_ready(status: str) -> bool:
+        return status == "Ready" or status.endswith(" - Ready")
+
+    def _evaluate_auto_spike_state(self) -> None:
+        if not self.auto_spike_mode or self.number_of_ships is None:
+            return
+
+        all_clients_matched = True
+        all_clients_ready = True
+        for client in self.client_manager.clients.values():
+            if client.port is None:
+                all_clients_matched = False
+            if not self._client_is_ready(str(client.status)):
+                all_clients_ready = False
+
+        if all_clients_matched:
+            for client in self.client_manager.clients.values():
+                if self.client_manager.biggest_match >= int(self.number_of_ships):
+                    print(
+                        f"----------------------MATCH OF {self.number_of_ships} "
+                        f"FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------"
+                    )
+                else:
+                    print(
+                        f"no match of {self.number_of_ships} found. "
+                        f"Biggest match was {self.client_manager.biggest_match} ships"
+                    )
+                    self.emit_client_event("reset", client.name)
+
+        if all_clients_ready:
+            self.emit_sail_staggered()
 
     def handle_automation_status(self, data: dict) -> None:
         if self.desired_port_mode and self.desired_port is not None:
@@ -94,31 +131,10 @@ class ControllerWindow(QMainWindow):
                     self.desired_port_mode_checkbox.setChecked(False)
                     self._update_control_states()
             elif data["status"] == "Ready":
-                self.emit_client_event("sail", client.name)
+                self.emit_sail_staggered([client.name])
 
-        elif self.auto_spike_mode and self.number_of_ships is not None:
-            all_clients_matched = True
-            all_client_ready = True
-            for client in self.client_manager.clients.values():
-                if client.port is None:
-                    all_clients_matched = False
-                if client.status != "Ready":
-                    all_client_ready = False
-            if all_clients_matched:
-                for client in self.client_manager.clients.values():
-                    if self.client_manager.biggest_match >= int(self.number_of_ships):
-                        print(
-                            f"----------------------MATCH OF {self.number_of_ships} "
-                            f"FOUND WITH {self.client_manager.biggest_match} SHIPS----------------------"
-                        )
-                    else:
-                        print(
-                            f"no match of {self.number_of_ships} found. "
-                            f"Biggest match was {self.client_manager.biggest_match} ships"
-                        )
-                        self.emit_client_event("reset", client.name)
-            if all_client_ready:
-                self.emit_client_event("sail")
+        elif self.auto_spike_mode:
+            self._evaluate_auto_spike_state()
 
     def _build_ui(self):
         central = QWidget()
@@ -201,7 +217,7 @@ class ControllerWindow(QMainWindow):
         layout.addWidget(QLabel("Region"))
         self.region_combo = QComboBox()
         self.region_combo.addItems(list(core_regions.keys()))
-        self.region_combo.setCurrentText("US East - Washington")
+        self.region_combo.setCurrentText("US East - Washington DC (NY)")
         self.region_combo.currentTextChanged.connect(self.change_region)
         layout.addWidget(self.region_combo)
 
@@ -284,6 +300,18 @@ class ControllerWindow(QMainWindow):
             "fix_resolution",
             lambda: self.emit_client_event("fix_resolution"),
         )
+
+        layout.addWidget(self._section_label("Sail stagger (seconds)"))
+        cooldown_form = QFormLayout()
+        for ship_type in ("Galleon", "Brigantine", "Sloop"):
+            spin = QDoubleSpinBox()
+            spin.setRange(0, 120)
+            spin.setDecimals(1)
+            spin.setSingleStep(0.5)
+            spin.setValue(5.0)
+            self._ship_sail_cooldown_spinboxes[ship_type] = spin
+            cooldown_form.addRow(ship_type, spin)
+        layout.addLayout(cooldown_form)
 
         layout.addWidget(self._section_label("Match"))
         self._add_action_button(
@@ -526,6 +554,8 @@ class ControllerWindow(QMainWindow):
             self.desired_port_entry.clear()
         print(f"Auto spike mode set to {self.auto_spike_mode}")
         self._update_control_states()
+        if self.auto_spike_mode:
+            self._evaluate_auto_spike_state()
 
     def set_number_of_ships(self, *_args):
         ships = self.number_of_ships_entry.text().strip()
@@ -533,12 +563,51 @@ class ControllerWindow(QMainWindow):
             return
         self.number_of_ships = ships
         print(f"Number of ships set to {self.number_of_ships}")
+        if self.auto_spike_mode:
+            self._evaluate_auto_spike_state()
 
     def set_person_to_invite(self, *_args):
         self.person_to_invite = self.person_to_invite_entry.text()
         print(f"Person to invite set to {self.person_to_invite}")
 
+    def _ship_sail_cooldowns(self) -> dict[str, float]:
+        return {
+            ship_type: spin.value()
+            for ship_type, spin in self._ship_sail_cooldown_spinboxes.items()
+        }
+
+    def emit_sail_staggered(self, client_names: list[str] | None = None) -> None:
+        active_clients = list(client_names or self.client_manager.get_active_clients())
+        fleet_ship_types = []
+        for name in active_clients:
+            client = self.client_manager.get_client(name)
+            if client:
+                fleet_ship_types.append(client.ship_type)
+
+        cooldowns = self._ship_sail_cooldowns()
+        for name in active_clients:
+            client = self.client_manager.get_client(name)
+            if not client:
+                continue
+            delay = compute_sail_delay(client.ship_type, fleet_ship_types, cooldowns)
+            self._set_last_pressed("sail", name)
+            self.sio.emit(
+                "client_event",
+                {
+                    "event": "sail",
+                    "clients": [name],
+                    "sail_delay_seconds": delay,
+                },
+            )
+
     def emit_client_event(self, event, *args):
+        if event == "sail" and not args:
+            self.emit_sail_staggered()
+            return
+        if event == "sail" and args:
+            self.emit_sail_staggered(list(args))
+            return
+
         self._set_last_pressed(event)
         active_clients = list(args) if args else self.client_manager.get_active_clients()
         self.sio.emit("client_event", {"event": event, "clients": active_clients})

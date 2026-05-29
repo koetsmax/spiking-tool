@@ -1,7 +1,6 @@
 import asyncio
 
 import keyboard
-import pynput.mouse
 
 from .ui_automation import (
     SCREEN_POLL_SECONDS,
@@ -21,6 +20,16 @@ class AutomationManager:
 
     def activate_window(self):
         self.screen.activate_window()
+
+    async def quit_game_gracefully(self) -> bool:
+        """Request game shutdown via WM_CLOSE and wait for sotgame.exe to exit."""
+        return await asyncio.to_thread(self.screen.request_close_game, 30.0)
+
+    async def _emit_quit_game_status(self, sio, closed: bool) -> None:
+        if closed:
+            await sio.emit("update_status", data="Game closed")
+        else:
+            await sio.emit("update_status", data="Game still running after close request")
 
     def check_game_resolution(self):
         return self.screen.ensure_target_resolution()
@@ -55,17 +64,15 @@ class AutomationManager:
         )
 
     async def _maybe_fix_and_report_resolution(self, sio) -> None:
-        check = self.screen.check_target_resolution()
-        if check.status == "no_window":
+        if self.screen.should_skip_resize():
+            check = self.screen.check_target_resolution()
             await self.emit_resolution_metric(sio, check)
             return
-        if check.status != "ok":
-            result = self.screen.ensure_target_resolution()
-            await self.emit_resolution_metric(sio, result)
-        else:
-            await self.emit_resolution_metric(sio, check)
+        result = self.screen.ensure_target_resolution()
+        await self.emit_resolution_metric(sio, result, force=True)
 
     async def report_game_resolution(self, sio) -> None:
+        await asyncio.to_thread(self.screen.wait_until_ready_to_resize, 120.0)
         result = self.check_game_resolution()
         await self.emit_resolution_metric(sio, result, force=True)
 
@@ -82,12 +89,12 @@ class AutomationManager:
 
         polls = 0
         while True:
+            if polls % 5 == 0:
+                await self._maybe_fix_and_report_resolution(sio)
             if self.screen.screen_visible(image_path):
-                await self.emit_resolution_metric(sio)
+                await self._maybe_fix_and_report_resolution(sio)
                 return True
             polls += 1
-            if polls % 20 == 0:
-                await self._maybe_fix_and_report_resolution(sio)
             if message:
                 print(message)
             await asyncio.sleep(SCREEN_POLL_SECONDS)
@@ -174,16 +181,7 @@ class AutomationManager:
             keyboard.press_and_release("esc")
         elif leave:
             await sio.emit("update_status", data="Leaving Game")
-            self.activate_window()
-            await asyncio.sleep(0.2)
-            keyboard.press_and_release("esc")
-            await asyncio.sleep(1.2)
-            for _ in range(7):
-                keyboard.press_and_release("down")
-                await asyncio.sleep(0.3)
-            keyboard.press_and_release("enter")
-            await asyncio.sleep(0.3)
-            keyboard.press_and_release("enter")
+            await self._emit_quit_game_status(sio, await self.quit_game_gracefully())
 
         if not portspiking:
             if self._check_resolution_after_launch:
@@ -268,12 +266,7 @@ class AutomationManager:
 
     async def kill_game(self, sio):
         await sio.emit("update_status", data="Killing Game")
-        self.activate_window()
-        await asyncio.sleep(0.2)
-        mouse = pynput.mouse.Controller()
-        mouse.click(pynput.mouse.Button.left, 2)
-        await asyncio.sleep(0.5)
-        keyboard.press_and_release("alt+f4")
+        await self._emit_quit_game_status(sio, await self.quit_game_gracefully())
 
     async def stop_functions(self, sio):
         await sio.emit("update_status", data="Stopping functions")

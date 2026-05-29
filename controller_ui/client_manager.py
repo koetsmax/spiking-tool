@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 _REJOIN_COPYABLE_STATUSES = frozenset({
     "Rejoining session",
     "Awaiting rejoin prompt",
+    "Awaiting connection",
 })
 
 
@@ -63,9 +64,17 @@ class ClientManager:
     def get_client(self, name: str) -> Optional[Client]:
         return self.clients.get(name)
 
-    def set_client_status(self, name: str, status, match=None) -> None:
+    def set_client_status(
+        self,
+        name: str,
+        status,
+        match=None,
+        *,
+        selected_region: str | None = None,
+    ) -> None:
         from controller_ui.client_columns import ClickableStatusLabel
         from spiking_tool.match import MatchDetails
+        from spiking_tool.region_match import match_in_selected_region
         from spiking_tool.ports import format_client_status
 
         client = self.get_client(name)
@@ -86,6 +95,19 @@ class ClientManager:
         )
         if port is not None:
             client.port = port
+
+        match_for_region = client.match or client.last_match
+        if (
+            port is not None
+            and selected_region
+            and match_for_region is not None
+            and not match_in_selected_region(match_for_region, selected_region)
+        ):
+            if isinstance(status, int):
+                display_status = f"{port} - wrong region"
+            else:
+                display_status = f"{port} - {display_status}"
+
         client.status = display_status
         if client.status_label:
             client.status_label.setText(str(client.status))

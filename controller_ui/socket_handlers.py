@@ -47,6 +47,7 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
             data["client"],
             data["status"],
             match=data.get("match"),
+            selected_region=controller.region_combo.currentText(),
         )
         controller.client_manager.update_biggest_match(controller.biggest_match_label)
         controller.handle_automation_status(data)

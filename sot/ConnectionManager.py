@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 import time
@@ -25,6 +26,10 @@ MATCH_IDLE_SECONDS = 20
 REGION_DELAY_SECONDS = 0.5
 DISCONNECT_COOLDOWN_NS = 5 * 1_000_000_000
 PORTSPIKE_DISCONNECT_COOLDOWN_NS = 60 * 1_000_000_000
+GAME_SERVER_MONITOR_FILTER = "(udp.DstPort >= 30000 and udp.DstPort <= 32000) or " "(udp.SrcPort >= 30000 and udp.SrcPort <= 32000)"
+
+logger = logging.getLogger(__name__)
+WINDIVERT_SERVICE_STARTING_WINERROR = 1058
 
 
 class ConnectionManager:
@@ -33,7 +38,7 @@ class ConnectionManager:
             self.packet = packet
             self.send_at = send_at
 
-    def __init__(self, region="US East - Washington"):
+    def __init__(self, region="US East - Washington DC (NY)"):
         try:
             self.region = region_from_name(region)
             print(
@@ -164,6 +169,11 @@ class ConnectionManager:
         self._last_emitted_join = None
         print("Match state cleared — waiting for next management server")
 
+    def begin_portspike_cycle(self) -> None:
+        """Reset match detection and disconnect state before a new port spike attempt."""
+        self.clear_disconnect()
+        self.forget_last_match()
+
     def _log_match(self, match_type: str, match_id: str, addr: str, port: int, display_location: str, match_text: str):
         print(f"[match:{match_type}] id={match_id} {addr}:{port} location={display_location}")
         for line in match_text.splitlines():
@@ -212,7 +222,8 @@ class ConnectionManager:
         Watch UDP 30000–32000 for game and management server endpoints.
 
         First new public endpoint → game server (logged locally only).
-        Second distinct endpoint within 20s → management server; emitted via join.
+        Second distinct endpoint while the game server is still active → management server;
+        emitted via join. The pairing window extends on continued game-server traffic.
         """
         while not self.is_stopped.is_set():
             try:
@@ -228,8 +239,6 @@ class ConnectionManager:
                 return
 
             if self._should_drop_packet():
-                with self._match_state_lock:
-                    self._match_last_packet_time = time.monotonic()
                 continue
 
             if packet.payload is None:
@@ -264,6 +273,9 @@ class ConnectionManager:
                 last_gs_time = self._match_last_gs_time
                 last_packet_time = self._match_last_packet_time
 
+                if game_server is not None and management_server is None and current == game_server:
+                    self._match_last_gs_time = now
+
                 new_activity = (current != game_server and current != management_server) or last_packet_time is None or (now - last_packet_time) > MATCH_IDLE_SECONDS
 
                 if new_activity:
@@ -279,13 +291,17 @@ class ConnectionManager:
                         match_text = f"Game server:\n{display_location}\n{current}"
                         self._log_match(match_type, match_id, addr, port, display_location, match_text)
                     else:
-                        self._match_management_server = current
-                        match_type = "management"
-                        location = self.resolve_location(addr)
-                        display_location = self.build_display_location(location)
-                        match_text = f"Management server:\n{display_location}\n{current}"
-                        self._log_match(match_type, match_id, addr, port, display_location, match_text)
-                        emit_join = True
+                        game_ip, _ = self._parse_endpoint(game_server)
+                        if addr == game_ip:
+                            self._match_last_gs_time = now
+                        else:
+                            self._match_management_server = current
+                            match_type = "management"
+                            location = self.resolve_location(addr)
+                            display_location = self.build_display_location(location)
+                            match_text = f"Management server:\n{display_location}\n{current}"
+                            self._log_match(match_type, match_id, addr, port, display_location, match_text)
+                            emit_join = True
 
                 self._match_last_packet_time = now
 
@@ -328,17 +344,34 @@ class ConnectionManager:
             except Exception:
                 traceback.print_exc()
 
-    def _divert_SoT(self):
+    def _open_windivert(self, label: str, filter_string: str):
         while not self.is_stopped.is_set():
+            handle = None
             try:
-                self._winDivert = pydivert.WinDivert("udp.DstPort == 3075")
+                handle = pydivert.WinDivert(filter_string)
                 time.sleep(1)
-                self._winDivert.open()
-                print("WinDivert opened successfully")
-                break
+                handle.open()
+                logger.info("%s opened successfully", label)
+                return handle
+            except OSError as exc:
+                if getattr(exc, "winerror", None) == WINDIVERT_SERVICE_STARTING_WINERROR and handle is not None:
+                    logger.debug(
+                        "%s waiting for WinDivert service to start: %s",
+                        label,
+                        exc,
+                    )
+                else:
+                    logger.warning("%s failed to open: %s", label, exc)
+                time.sleep(1)
             except Exception:
-                traceback.print_exc()
+                logger.exception("%s failed to open", label)
                 time.sleep(1)
+        return None
+
+    def _divert_SoT(self):
+        self._winDivert = self._open_windivert("WinDivert", "udp.DstPort == 3075")
+        if self._winDivert is None:
+            return
 
         self._packet_mgmt()
 
@@ -349,16 +382,12 @@ class ConnectionManager:
                 pass
 
     def _monitor_SoT(self):
-        while not self.is_stopped.is_set():
-            try:
-                self._winMonitor = pydivert.WinDivert("udp.DstPort >= 30000 and udp.DstPort <= 32000")
-                time.sleep(1)
-                self._winMonitor.open()
-                print("WinMonitor opened successfully")
-                break
-            except Exception:
-                traceback.print_exc()
-                time.sleep(1)
+        self._winMonitor = self._open_windivert(
+            "WinMonitor",
+            GAME_SERVER_MONITOR_FILTER,
+        )
+        if self._winMonitor is None:
+            return
 
         self._connection_monitor()
 

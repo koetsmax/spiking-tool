@@ -33,8 +33,13 @@ def register_client_handlers(
 
     identity = {"display_name": client_name}
 
-    def is_selected(client_names: list[str]) -> bool:
-        return identity["display_name"] in client_names
+    def selected_client_names(data) -> list[str]:
+        if isinstance(data, dict):
+            return data.get("clients", [])
+        return data
+
+    def is_selected(data) -> bool:
+        return identity["display_name"] in selected_client_names(data)
 
     async def shutdown(_data=None) -> None:
         remote_log_bridge.enqueue("Shutdown requested from controller", "INFO")
@@ -60,7 +65,7 @@ def register_client_handlers(
         remote_log_bridge.attach(sio, identity["display_name"])
         remote_log_bridge.enqueue(f"Assigned controller name: {identity['display_name']}", "INFO")
 
-    async def run_if_selected(data: list[str], action: Callable[[], Awaitable[Any]]) -> None:
+    async def run_if_selected(data, action: Callable[[], Awaitable[Any]]) -> None:
         if is_selected(data):
             await action()
 
@@ -87,7 +92,11 @@ def register_client_handlers(
 
     @sio.event()
     async def sail(data):
+        sail_delay = data.get("sail_delay_seconds", 0) if isinstance(data, dict) else 0
+
         async def action() -> None:
+            if sail_delay > 0:
+                await asyncio.sleep(sail_delay)
             connection.clear_disconnect()
             await automation.sail(sio, connection.portspike)
 
@@ -96,7 +105,10 @@ def register_client_handlers(
     @sio.event()
     async def rejoin_session(data):
         if is_selected(data):
-            connection.clear_disconnect()
+            if connection.portspike:
+                connection.begin_portspike_cycle()
+            else:
+                connection.clear_disconnect()
             await automation.rejoin_session(
                 sio,
                 connection.portspike,
@@ -106,6 +118,8 @@ def register_client_handlers(
     @sio.event()
     async def reset(data):
         if is_selected(data):
+            if connection.portspike:
+                connection.begin_portspike_cycle()
             await automation.reset(sio, leave=True, portspiking=connection.portspike)
 
     @sio.event()

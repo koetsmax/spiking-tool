@@ -142,7 +142,18 @@ class SpikingServer:
             event = data["event"]
             targets = data.get("clients", [])
             for client_sid, client in list(self.clients.items()):
-                if client.type == "client" and client.display_name in targets:
+                if client.type != "client" or client.display_name not in targets:
+                    continue
+                if event == "sail" and isinstance(data, dict):
+                    await self.sio.emit(
+                        "sail",
+                        data={
+                            "clients": [client.display_name],
+                            "sail_delay_seconds": data.get("sail_delay_seconds", 0),
+                        },
+                        to=client_sid,
+                    )
+                else:
                     await self.sio.emit(event, data=[client.display_name], to=client_sid)
 
         @self.sio.event

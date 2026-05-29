@@ -164,6 +164,11 @@ class MetricIndicatorColumn(ClientColumnSpec):
             indicator.set_state(client.metrics.get(self.metric_id, "unknown"))
 
 
+class NoScrollComboBox(QComboBox):
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
 class ShipColumn(ClientColumnSpec):
     def __init__(self) -> None:
         super().__init__("ship", "Ship")
@@ -174,7 +179,7 @@ class ShipColumn(ClientColumnSpec):
     def populate(self, table, row, column_index, client, window) -> None:
         ship_types = ["Sloop", "Brigantine", "Galleon", "Captaincy"]
         ship_type = client.ship_combo.currentText() if client.ship_combo else client.ship_type
-        combo = QComboBox()
+        combo = NoScrollComboBox()
         combo.addItems(ship_types)
         combo.setCurrentText(ship_type)
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
