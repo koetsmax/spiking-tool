@@ -105,7 +105,10 @@ def register_client_handlers(
     @sio.event()
     async def rejoin_session(data):
         if is_selected(data):
-            connection.clear_disconnect()
+            if connection.portspike:
+                connection.begin_portspike_cycle()
+            else:
+                connection.clear_disconnect()
             await automation.rejoin_session(
                 sio,
                 connection.portspike,
@@ -115,6 +118,8 @@ def register_client_handlers(
     @sio.event()
     async def reset(data):
         if is_selected(data):
+            if connection.portspike:
+                connection.begin_portspike_cycle()
             await automation.reset(sio, leave=True, portspiking=connection.portspike)
 
     @sio.event()
