@@ -20,6 +20,8 @@ SOTGAME_PROCESS = "sotgame.exe"
 EAC_PROCESS_PREFIX = "easyanticheat"
 EAC_WAIT_POLL_SECONDS = 0.5
 EAC_WAIT_TIMEOUT_SECONDS = 300.0
+GAME_CLOSE_POLL_SECONDS = 0.5
+GAME_CLOSE_TIMEOUT_SECONDS = 30.0
 IMAGE_CONFIDENCE = 0.9
 SCREEN_POLL_SECONDS = 0.5
 PROMO_VIDEO_SKIP_SECONDS = 30.0
@@ -122,6 +124,87 @@ class GameScreenMatcher:
             return True
         logger.info("Waiting for EAC launcher to close before resizing the game window")
         return self.wait_for_eac_launcher_gone()
+
+    @staticmethod
+    def sotgame_running() -> bool:
+        for proc in psutil.process_iter(["name"]):
+            try:
+                if proc.info.get("name", "").lower() == SOTGAME_PROCESS:
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
+
+    def find_sotgame_pid(self) -> Optional[int]:
+        hwnd = self.find_sot_hwnd()
+        if hwnd:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)  # pylint: disable=c-extension-no-member
+            return pid
+
+        for proc in psutil.process_iter(["name", "pid"]):
+            try:
+                if proc.info.get("name", "").lower() == SOTGAME_PROCESS:
+                    return int(proc.info["pid"])
+            except (psutil.NoSuchProcess, psutil.AccessDenied, TypeError, ValueError):
+                continue
+        return None
+
+    def post_wm_close_to_pid(self, pid: int) -> int:
+        sent = 0
+
+        def callback(hwnd, _extra) -> bool:
+            nonlocal sent
+            if not win32gui.IsWindowVisible(hwnd):  # pylint: disable=c-extension-no-member
+                return True
+            _, found_pid = win32process.GetWindowThreadProcessId(hwnd)  # pylint: disable=c-extension-no-member
+            if found_pid == pid:
+                win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)  # pylint: disable=c-extension-no-member
+                sent += 1
+            return True
+
+        win32gui.EnumWindows(callback, None)  # pylint: disable=c-extension-no-member
+        return sent
+
+    def wait_for_sotgame_exit(
+        self,
+        timeout_seconds: float = GAME_CLOSE_TIMEOUT_SECONDS,
+    ) -> bool:
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            if not self.sotgame_running():
+                return True
+            if self._should_stop():
+                return False
+            time.sleep(GAME_CLOSE_POLL_SECONDS)
+        return False
+
+    def request_close_game(
+        self,
+        timeout_seconds: float = GAME_CLOSE_TIMEOUT_SECONDS,
+    ) -> bool:
+        """
+        Ask the game to close via WM_CLOSE (same as clicking the window X button).
+
+        psutil is only used to detect when sotgame.exe has exited; terminate()/kill()
+        are not used because they force-kill without running the game's shutdown path.
+        """
+        pid = self.find_sotgame_pid()
+        if pid is None:
+            logger.info("No %s process found to close", SOTGAME_PROCESS)
+            return True
+
+        windows_closed = 0
+        hwnd = self.find_sot_hwnd()
+        if hwnd:
+            win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)  # pylint: disable=c-extension-no-member
+            windows_closed += 1
+        windows_closed += self.post_wm_close_to_pid(pid)
+        if windows_closed == 0:
+            logger.warning("No visible game windows found for pid %s", pid)
+            return False
+
+        logger.info("Requested game close via WM_CLOSE (pid=%s)", pid)
+        return self.wait_for_sotgame_exit(timeout_seconds)
 
     @staticmethod
     def get_client_size(hwnd) -> Tuple[int, int]:
