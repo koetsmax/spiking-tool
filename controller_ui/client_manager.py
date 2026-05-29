@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 _REJOIN_COPYABLE_STATUSES = frozenset({
     "Rejoining session",
     "Awaiting rejoin prompt",
+    "Awaiting connection",
 })
 
 
