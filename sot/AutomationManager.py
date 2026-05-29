@@ -1,7 +1,6 @@
 import asyncio
 
 import keyboard
-import pynput.mouse
 
 from .ui_automation import (
     SCREEN_POLL_SECONDS,
@@ -21,6 +20,19 @@ class AutomationManager:
 
     def activate_window(self):
         self.screen.activate_window()
+
+    async def quit_game_via_menu(self) -> None:
+        """Exit through the in-game menu so the client shuts down cleanly."""
+        self.activate_window()
+        await asyncio.sleep(0.2)
+        keyboard.press_and_release("esc")
+        await asyncio.sleep(1.2)
+        for _ in range(8):
+            keyboard.press_and_release("down")
+            await asyncio.sleep(0.3)
+        keyboard.press_and_release("enter")
+        await asyncio.sleep(0.3)
+        keyboard.press_and_release("enter")
 
     def check_game_resolution(self):
         return self.screen.ensure_target_resolution()
@@ -174,16 +186,7 @@ class AutomationManager:
             keyboard.press_and_release("esc")
         elif leave:
             await sio.emit("update_status", data="Leaving Game")
-            self.activate_window()
-            await asyncio.sleep(0.2)
-            keyboard.press_and_release("esc")
-            await asyncio.sleep(1.2)
-            for _ in range(7):
-                keyboard.press_and_release("down")
-                await asyncio.sleep(0.3)
-            keyboard.press_and_release("enter")
-            await asyncio.sleep(0.3)
-            keyboard.press_and_release("enter")
+            await self.quit_game_via_menu()
 
         if not portspiking:
             if self._check_resolution_after_launch:
@@ -268,12 +271,7 @@ class AutomationManager:
 
     async def kill_game(self, sio):
         await sio.emit("update_status", data="Killing Game")
-        self.activate_window()
-        await asyncio.sleep(0.2)
-        mouse = pynput.mouse.Controller()
-        mouse.click(pynput.mouse.Button.left, 2)
-        await asyncio.sleep(0.5)
-        keyboard.press_and_release("alt+f4")
+        await self.quit_game_via_menu()
 
     async def stop_functions(self, sio):
         await sio.emit("update_status", data="Stopping functions")
