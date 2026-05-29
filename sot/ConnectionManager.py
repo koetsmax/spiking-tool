@@ -37,7 +37,7 @@ class ConnectionManager:
             self.packet = packet
             self.send_at = send_at
 
-    def __init__(self, region="US East - Washington"):
+    def __init__(self, region="US East - Washington DC (NY)"):
         try:
             self.region = region_from_name(region)
             print(
