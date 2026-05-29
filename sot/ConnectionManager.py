@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 import time
@@ -25,6 +26,9 @@ MATCH_IDLE_SECONDS = 20
 REGION_DELAY_SECONDS = 0.5
 DISCONNECT_COOLDOWN_NS = 5 * 1_000_000_000
 PORTSPIKE_DISCONNECT_COOLDOWN_NS = 60 * 1_000_000_000
+
+logger = logging.getLogger(__name__)
+WINDIVERT_SERVICE_STARTING_WINERROR = 1058
 
 
 class ConnectionManager:
@@ -328,17 +332,37 @@ class ConnectionManager:
             except Exception:
                 traceback.print_exc()
 
-    def _divert_SoT(self):
+    def _open_windivert(self, label: str, filter_string: str):
         while not self.is_stopped.is_set():
+            handle = None
             try:
-                self._winDivert = pydivert.WinDivert("udp.DstPort == 3075")
+                handle = pydivert.WinDivert(filter_string)
                 time.sleep(1)
-                self._winDivert.open()
-                print("WinDivert opened successfully")
-                break
+                handle.open()
+                logger.info("%s opened successfully", label)
+                return handle
+            except OSError as exc:
+                if (
+                    getattr(exc, "winerror", None) == WINDIVERT_SERVICE_STARTING_WINERROR
+                    and handle is not None
+                ):
+                    logger.debug(
+                        "%s waiting for WinDivert service to start: %s",
+                        label,
+                        exc,
+                    )
+                else:
+                    logger.warning("%s failed to open: %s", label, exc)
+                time.sleep(1)
             except Exception:
-                traceback.print_exc()
+                logger.exception("%s failed to open", label)
                 time.sleep(1)
+        return None
+
+    def _divert_SoT(self):
+        self._winDivert = self._open_windivert("WinDivert", "udp.DstPort == 3075")
+        if self._winDivert is None:
+            return
 
         self._packet_mgmt()
 
@@ -349,16 +373,12 @@ class ConnectionManager:
                 pass
 
     def _monitor_SoT(self):
-        while not self.is_stopped.is_set():
-            try:
-                self._winMonitor = pydivert.WinDivert("udp.DstPort >= 30000 and udp.DstPort <= 32000")
-                time.sleep(1)
-                self._winMonitor.open()
-                print("WinMonitor opened successfully")
-                break
-            except Exception:
-                traceback.print_exc()
-                time.sleep(1)
+        self._winMonitor = self._open_windivert(
+            "WinMonitor",
+            "udp.DstPort >= 30000 and udp.DstPort <= 32000",
+        )
+        if self._winMonitor is None:
+            return
 
         self._connection_monitor()
 
