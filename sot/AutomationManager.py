@@ -25,6 +25,19 @@ class AutomationManager:
         """Request game shutdown via WM_CLOSE and wait for sotgame.exe to exit."""
         return await asyncio.to_thread(self.screen.request_close_game, 30.0)
 
+    async def leave_session_via_menu(self) -> None:
+        """Return to the title screen through the in-game menu without closing the game."""
+        self.activate_window()
+        await asyncio.sleep(0.2)
+        keyboard.press_and_release("esc")
+        await asyncio.sleep(1.2)
+        for _ in range(7):
+            keyboard.press_and_release("down")
+            await asyncio.sleep(0.3)
+        keyboard.press_and_release("enter")
+        await asyncio.sleep(0.3)
+        keyboard.press_and_release("enter")
+
     async def _emit_quit_game_status(self, sio, closed: bool) -> None:
         if closed:
             await sio.emit("update_status", data="Game closed")
@@ -181,7 +194,7 @@ class AutomationManager:
             keyboard.press_and_release("esc")
         elif leave:
             await sio.emit("update_status", data="Leaving Game")
-            await self._emit_quit_game_status(sio, await self.quit_game_gracefully())
+            await self.leave_session_via_menu()
 
         if not portspiking:
             if self._check_resolution_after_launch:
