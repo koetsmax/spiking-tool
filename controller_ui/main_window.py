@@ -201,7 +201,7 @@ class ControllerWindow(QMainWindow):
         layout.addWidget(QLabel("Region"))
         self.region_combo = QComboBox()
         self.region_combo.addItems(list(core_regions.keys()))
-        self.region_combo.setCurrentText("US East - Washington")
+        self.region_combo.setCurrentText("US East - Washington DC (NY)")
         self.region_combo.currentTextChanged.connect(self.change_region)
         layout.addWidget(self.region_combo)
 
