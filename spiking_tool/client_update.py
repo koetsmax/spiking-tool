@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
 import subprocess
 import sys
 
@@ -18,6 +17,52 @@ GITHUB_USER_AGENT = "spiking-tool-client"
 MIN_CLIENT_EXE_BYTES = 5_000_000
 DOWNLOAD_ATTEMPTS = 3
 UPDATED_EXE_NAME = "client.exe"
+
+# Fallback when PyInstaller _MEIPASS bundle is not readable (shutil.copy/copymode fails).
+_UPDATE_PS1 = """\
+param (
+    [string]$old_executable_path,
+    [int]$process_id
+)
+
+Write-Output "Updating Spiking Tool client..."
+
+$ErrorActionPreference = "Stop"
+
+try {
+    Start-Sleep -Seconds 2
+
+    $process = Get-Process -Id $process_id -ErrorAction SilentlyContinue
+    if ($null -ne $process) {
+        Stop-Process -Id $process_id -Force
+        Start-Sleep -Seconds 1
+    }
+
+    $updated_executable_path = "$env:LOCALAPPDATA\\SpikingTool\\updater\\client.exe"
+
+    if (-not (Test-Path $updated_executable_path)) {
+        throw "Downloaded update not found at $updated_executable_path"
+    }
+
+    $backupPath = "$old_executable_path.old"
+    if (Test-Path $backupPath) {
+        Remove-Item -Path $backupPath -Force
+    }
+    Rename-Item -Path $old_executable_path -NewName (Split-Path -Leaf $backupPath)
+    Move-Item -Path $updated_executable_path -Destination $old_executable_path
+    Remove-Item -Path $backupPath -ErrorAction SilentlyContinue
+
+    Start-Process -FilePath $old_executable_path
+
+    Write-Output "Update completed successfully."
+}
+catch {
+    Write-Host "An error occurred during update:" -ForegroundColor Red
+    $_ | Format-List * -Force
+    Read-Host -Prompt "Press Enter to exit"
+    exit 1
+}
+"""
 
 
 def release_version(tag_name: str) -> str:
@@ -35,10 +80,30 @@ def _updater_dir() -> str:
     return os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "updater")
 
 
-def _bundled_update_script() -> str:
+def _update_script_candidates() -> list[str]:
+    paths: list[str] = []
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, "update.ps1")
-    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "update.ps1")
+        paths.append(os.path.join(sys._MEIPASS, "update.ps1"))
+    paths.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "update.ps1"))
+    return paths
+
+
+def _update_script_source() -> str:
+    for path in _update_script_candidates():
+        try:
+            with open(path, encoding="utf-8") as handle:
+                return handle.read()
+        except OSError as exc:
+            logger.debug("Could not read update script from %s: %s", path, exc)
+    return _UPDATE_PS1
+
+
+def _prepare_updater_script(updater_dir: str) -> str:
+    os.makedirs(updater_dir, exist_ok=True)
+    script_destination = os.path.join(updater_dir, "update.ps1")
+    with open(script_destination, "w", encoding="utf-8", newline="\r\n") as handle:
+        handle.write(_update_script_source())
+    return script_destination
 
 
 def _request_headers() -> dict[str, str]:
@@ -77,6 +142,10 @@ def release_download_url(release: dict) -> str | None:
 
 
 def download_file(url: str, dest: str, *, timeout: int = 120) -> bool:
+    dest_dir = os.path.dirname(dest)
+    if dest_dir:
+        os.makedirs(dest_dir, exist_ok=True)
+
     for attempt in range(DOWNLOAD_ATTEMPTS):
         try:
             logger.info("Downloading update (attempt %d/%d)...", attempt + 1, DOWNLOAD_ATTEMPTS)
@@ -108,14 +177,6 @@ def download_file(url: str, dest: str, *, timeout: int = 120) -> bool:
                 except OSError:
                     pass
     return False
-
-
-def _prepare_updater_script(updater_dir: str) -> str:
-    os.makedirs(updater_dir, exist_ok=True)
-    bundled_script = _bundled_update_script()
-    script_destination = os.path.join(updater_dir, "update.ps1")
-    shutil.copy(bundled_script, script_destination)
-    return script_destination
 
 
 def _launch_update_script(script_path: str, current_exe: str) -> None:
@@ -176,6 +237,7 @@ def maybe_update_client(current_version: str) -> bool:
         return False
 
     updater_dir = _updater_dir()
+    os.makedirs(updater_dir, exist_ok=True)
     updated_exe = os.path.join(updater_dir, UPDATED_EXE_NAME)
     if os.path.isfile(updated_exe):
         try:
