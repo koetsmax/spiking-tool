@@ -79,6 +79,14 @@ QPushButton#clientKillButton {
 }
 QPushButton#clientKillButton:hover:enabled { background-color: #f5a8b8; }
 QPushButton#clientKillButton:pressed:enabled { background-color: #e06c75; }
+QPushButton#clientAfkOnButton {
+    background-color: #a6e3a1;
+    color: #1e1e2e;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+QPushButton#clientAfkOnButton:hover:enabled { background-color: #b8f0c0; }
+QPushButton#clientAfkOnButton:pressed:enabled { background-color: #94e2d5; }
 QPushButton[lastPressed="true"] {
     background-color: #a6e3a1;
     color: #1e1e2e;

@@ -4,6 +4,12 @@ import pydivert
 
 
 class DumbConnectionManager:
+    """
+    Legacy minimal WinDivert dropper for standalone anti-afk scripts.
+
+    Prefer ConnectionManager.force_disconnect on the main client — it uses the
+    same WinDivert handles without a second capture instance.
+    """
     def __init__(self):
         try:
             self.force_disconnect = False

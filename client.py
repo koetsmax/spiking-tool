@@ -20,7 +20,7 @@ from spiking_tool.local_log import install_client_local_file_logging
 from spiking_tool.remote_log import install_client_remote_logging
 from spiking_tool.win_console import hide_console_window
 
-VERSION = "3.2.2"
+VERSION = "3.3.0"
 logger = logging.getLogger(__name__)
 
 
@@ -88,13 +88,6 @@ def _show_console() -> bool:
     return False
 
 
-def _afk_exe_path() -> str:
-    bundled = os.path.join(_app_dir(), "anti-afk-v2.exe")
-    if os.path.isfile(bundled):
-        return bundled
-    return os.path.join(_app_dir(), "afk", "v2", "anti-afk-v2.exe")
-
-
 async def main():
     show_console = _show_console()
     install_client_local_file_logging()
@@ -109,16 +102,6 @@ async def main():
         sys.exit(0)
 
     logger.info("Starting client...")
-    logger.info("Launching afk macro...")
-    afk_exe = _afk_exe_path()
-    try:
-        if os.path.isfile(afk_exe):
-            os.startfile(afk_exe)
-            logger.info("AFK macro launched")
-        else:
-            raise FileNotFoundError(afk_exe)
-    except OSError as e:
-        logger.warning("Failed to launch afk macro: %s", e)
 
     logger.info("Checking database...")
     spike_tool_temp = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool")
@@ -165,8 +148,16 @@ async def main():
     sio = socketio.AsyncClient()
     connection = sot.ConnectionManager()
     automation = sot.AutomationManager()
+    anti_afk_manager = sot.AntiAfkManager(connection, screen=automation.screen)
     client_state = ClientState()
-    register_client_handlers(sio, config["name"], connection, automation, client_state)
+    register_client_handlers(
+        sio,
+        config["name"],
+        connection,
+        automation,
+        anti_afk_manager,
+        client_state,
+    )
 
     auth = {"name": config["name"], "type": "client"}
 

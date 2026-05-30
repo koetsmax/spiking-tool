@@ -71,6 +71,7 @@ class ConnectionManager:
             self._match_last_gs_time = None
             self._match_last_packet_time = None
             self._last_emitted_join: tuple[str, tuple[str, int, str, int]] | None = None
+            self._forgotten_management_servers: set[str] = set()
 
             mmdb_folder = os.path.join(os.environ["LOCALAPPDATA"], "SpikingTool", "mmdb")
             self.mmlocation = os.path.join(mmdb_folder, os.listdir(mmdb_folder)[0])
@@ -161,6 +162,11 @@ class ConnectionManager:
     def forget_last_match(self):
         """Clear match detection state so the next management server emits join again."""
         with self._match_state_lock:
+            if self._match_management_server is not None:
+                self._forgotten_management_servers.add(self._match_management_server)
+            if self._last_emitted_join is not None:
+                _, (_, _, mgmt_ip, mgmt_port) = self._last_emitted_join
+                self._forgotten_management_servers.add(f"{mgmt_ip}:{mgmt_port}")
             self._match_game_server = None
             self._match_management_server = None
             self._match_id = None
@@ -284,6 +290,7 @@ class ConnectionManager:
                         match_id = self.generate_match_id()
                         self._match_id = match_id
                         self._match_game_server = current
+                        self._forgotten_management_servers.clear()
                         self._match_last_gs_time = now
                         match_type = "game"
                         location = self.resolve_location(addr)
@@ -301,7 +308,10 @@ class ConnectionManager:
                             display_location = self.build_display_location(location)
                             match_text = f"Management server:\n{display_location}\n{current}"
                             self._log_match(match_type, match_id, addr, port, display_location, match_text)
-                            emit_join = True
+                            if current not in self._forgotten_management_servers:
+                                emit_join = True
+                            else:
+                                print(f"Ignoring forgotten management server {current}")
 
                 self._match_last_packet_time = now
 

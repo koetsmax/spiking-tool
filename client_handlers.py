@@ -10,8 +10,10 @@ from typing import Any, Awaitable, Callable, Optional
 import socketio
 
 import sot
+from sot.AntiAfkManager import AntiAfkManager
 from sot.AutomationManager import AutomationManager
 from sot.ConnectionManager import ConnectionManager
+from sot.SessionLoadTracker import SessionLoadTracker
 from spiking_tool.remote_log import remote_log_bridge
 
 
@@ -26,6 +28,7 @@ def register_client_handlers(
     client_name: str,
     connection: ConnectionManager,
     automation: AutomationManager,
+    anti_afk_manager: AntiAfkManager,
     state: Optional[ClientState] = None,
 ) -> ClientState:
     if state is None:
@@ -44,6 +47,7 @@ def register_client_handlers(
     async def shutdown(_data=None) -> None:
         remote_log_bridge.enqueue("Shutdown requested from controller", "INFO")
         automation.stop = True
+        await anti_afk_manager.stop()
         connection.stop()
         os._exit(0)
 
@@ -58,6 +62,40 @@ def register_client_handlers(
         remote_log_bridge.attach(sio, identity["display_name"])
         remote_log_bridge.start_pump_task()
         asyncio.create_task(automation.emit_resolution_metric(sio, force=True))
+        await sio.emit("afk_state", {"enabled": anti_afk_manager.enabled})
+
+    async def emit_afk_status(payload: dict) -> None:
+        await sio.emit("afk_status", payload)
+
+    async def emit_afk_state(enabled: bool, preserve_status: bool = False) -> None:
+        await sio.emit(
+            "afk_state",
+            {"enabled": enabled, "preserve_status": preserve_status},
+        )
+
+    anti_afk_manager.set_status_callback(emit_afk_status)
+    anti_afk_manager.set_state_callback(emit_afk_state)
+    anti_afk_manager.set_log_callback(
+        lambda message, level="INFO": remote_log_bridge.enqueue(f"[AFK] {message}", level)
+    )
+
+    session_load = SessionLoadTracker(
+        automation.screen,
+        should_stop=lambda: automation.stop,
+        log=lambda message, level="INFO": remote_log_bridge.enqueue(f"[Load] {message}", level),
+    )
+    automation.set_session_load_tracker(session_load)
+
+    async def emit_client_status(status) -> None:
+        await sio.emit("update_status", data=status)
+
+    @sio.event()
+    async def anti_afk(data):
+        if not isinstance(data, dict):
+            return
+        enabled = bool(data.get("enabled"))
+        remote_log_bridge.enqueue(f"[AFK] Controller set anti-AFK to {enabled}", "INFO")
+        await anti_afk_manager.set_enabled(enabled)
 
     @sio.event()
     async def client_identity(data):
@@ -99,6 +137,8 @@ def register_client_handlers(
                 await asyncio.sleep(sail_delay)
             connection.clear_disconnect()
             await automation.sail(sio, connection.portspike)
+            if not connection.portspike:
+                await session_load.start(emit_client_status)
 
         await run_if_selected(data, action)
 
@@ -148,8 +188,11 @@ def register_client_handlers(
     async def forget_match(data):
         if is_selected(data):
             state.prev_port = None
+            session_load.cancel()
+            session_load.forget_match()
             connection.forget_last_match()
-            print("Forgot last match — ready to detect management server again")
+            await emit_client_status("Pending...")
+            remote_log_bridge.enqueue("Forgot last match", "INFO")
 
     @sio.event()
     async def fix_resolution(data):
@@ -158,7 +201,12 @@ def register_client_handlers(
     async def on_join(match_data):
         try:
             state.prev_port = int(match_data["management_port"])
+            session_load.record_match(state.prev_port)
             await sio.emit("join", match_data)
+            if session_load.reset_waiting:
+                await emit_client_status(session_load.waiting_to_load_status())
+            elif session_load.monitoring and not session_load.loaded:
+                await emit_client_status(session_load.loading_status())
         except Exception:
             traceback.print_exc()
 

@@ -38,11 +38,4 @@ class MatchDetails:
         return normalize_port_digits(self.management_port)
 
     def to_clipboard_text(self) -> str:
-        return (
-            "Match found!\n"
-            f"Region: {self.region}\n"
-            f"{self.game_ip}:{self.game_port}\n"
-            "\n"
-            "Management server:\n"
-            f"{self.management_ip}:{self.management_port}"
-        )
+        return "Match found!\n" f"Region: {self.region}\n" f"{self.game_ip}:{self.game_port}\n" "\n" "Management server:\n" f"{self.management_ip}:{self.management_port}"
