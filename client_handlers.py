@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable, Optional
 import socketio
 
 import sot
+from sot.AntiAfkManager import AntiAfkManager
 from sot.AutomationManager import AutomationManager
 from sot.ConnectionManager import ConnectionManager
 from spiking_tool.remote_log import remote_log_bridge
@@ -26,6 +27,7 @@ def register_client_handlers(
     client_name: str,
     connection: ConnectionManager,
     automation: AutomationManager,
+    anti_afk_manager: AntiAfkManager,
     state: Optional[ClientState] = None,
 ) -> ClientState:
     if state is None:
@@ -44,6 +46,7 @@ def register_client_handlers(
     async def shutdown(_data=None) -> None:
         remote_log_bridge.enqueue("Shutdown requested from controller", "INFO")
         automation.stop = True
+        await anti_afk_manager.stop()
         connection.stop()
         os._exit(0)
 
@@ -58,6 +61,30 @@ def register_client_handlers(
         remote_log_bridge.attach(sio, identity["display_name"])
         remote_log_bridge.start_pump_task()
         asyncio.create_task(automation.emit_resolution_metric(sio, force=True))
+        await sio.emit("afk_state", {"enabled": anti_afk_manager.enabled})
+
+    async def emit_afk_status(payload: dict) -> None:
+        await sio.emit("afk_status", payload)
+
+    async def emit_afk_state(enabled: bool, preserve_status: bool = False) -> None:
+        await sio.emit(
+            "afk_state",
+            {"enabled": enabled, "preserve_status": preserve_status},
+        )
+
+    anti_afk_manager.set_status_callback(emit_afk_status)
+    anti_afk_manager.set_state_callback(emit_afk_state)
+    anti_afk_manager.set_log_callback(
+        lambda message, level="INFO": remote_log_bridge.enqueue(f"[AFK] {message}", level)
+    )
+
+    @sio.event()
+    async def anti_afk(data):
+        if not isinstance(data, dict):
+            return
+        enabled = bool(data.get("enabled"))
+        remote_log_bridge.enqueue(f"[AFK] Controller set anti-AFK to {enabled}", "INFO")
+        await anti_afk_manager.set_enabled(enabled)
 
     @sio.event()
     async def client_identity(data):

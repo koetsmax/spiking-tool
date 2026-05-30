@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+import time
+
 if TYPE_CHECKING:
-    from PySide6.QtWidgets import QLabel, QCheckBox, QComboBox, QWidget
+    from PySide6.QtWidgets import QLabel, QCheckBox, QComboBox, QPushButton, QWidget
 
     from controller_ui.client_columns import MetricState
     from spiking_tool.match import MatchDetails
@@ -44,6 +46,13 @@ class Client:
         self.match: Optional["MatchDetails"] = None
         self.last_match: Optional["MatchDetails"] = None
         self.holding = False
+        self.afk_enabled = False
+        self.afk_status = ""
+        self.afk_toggle_button: Optional["QPushButton"] = None
+        self.afk_status_label: Optional[QLabel] = None
+        self.afk_countdown_deadline: Optional[float] = None
+        self.afk_countdown_payload: Optional["AfkStatusPayload"] = None
+        self.afk_show_status = False
 
 
 class ClientManager:
@@ -122,6 +131,96 @@ class ClientManager:
             return
         client.metrics[metric] = state
         refresh_client_metrics(client)
+
+    def _clear_client_afk_countdown(self, client: Client) -> None:
+        client.afk_countdown_deadline = None
+        client.afk_countdown_payload = None
+
+    def _render_client_afk_status(self, client: Client, *, remaining: int | None = None) -> None:
+        if not client.afk_status_label:
+            return
+        if client.afk_countdown_payload and client.afk_countdown_payload.type == "countdown":
+            if remaining is None and client.afk_countdown_deadline is not None:
+                remaining = int(client.afk_countdown_deadline - time.monotonic())
+            text = client.afk_countdown_payload.display_text(remaining_seconds=remaining or 0)
+        else:
+            text = client.afk_status
+        client.afk_status_label.setText(text)
+
+    def set_client_afk_status(self, name: str, status) -> None:
+        from spiking_tool.afk_status import AfkStatusPayload
+
+        client = self.get_client(name)
+        if not client:
+            return
+
+        payload = AfkStatusPayload.from_payload(status)
+        if payload is None:
+            return
+
+        if payload.type == "clear":
+            self._clear_client_afk_countdown(client)
+            client.afk_status = ""
+            client.afk_show_status = False
+            self._render_client_afk_status(client)
+            return
+
+        if payload.type == "countdown":
+            client.afk_countdown_payload = payload
+            client.afk_countdown_deadline = time.monotonic() + payload.seconds
+            client.afk_status = payload.display_text(remaining_seconds=payload.seconds)
+        else:
+            self._clear_client_afk_countdown(client)
+            client.afk_status = payload.display_text()
+            if payload.type == "error":
+                client.afk_show_status = True
+                if client.afk_status_label:
+                    client.afk_status_label.setStyleSheet("color: #f38ba8;")
+            elif client.afk_status_label:
+                client.afk_status_label.setStyleSheet("")
+
+        self._render_client_afk_status(
+            client,
+            remaining=payload.seconds if payload.type == "countdown" else None,
+        )
+
+    def tick_afk_countdowns(self) -> None:
+        for client in self.clients.values():
+            if client.afk_countdown_deadline is None or client.afk_countdown_payload is None:
+                continue
+            remaining = int(client.afk_countdown_deadline - time.monotonic())
+            client.afk_status = client.afk_countdown_payload.display_text(remaining_seconds=remaining)
+            self._render_client_afk_status(client, remaining=remaining)
+
+    def set_client_afk_enabled(
+        self,
+        name: str,
+        enabled: bool,
+        *,
+        preserve_status: bool = False,
+    ) -> None:
+        from controller_ui.client_columns import style_afk_toggle_button
+
+        client = self.get_client(name)
+        if not client:
+            return
+        client.afk_enabled = enabled
+        if enabled:
+            client.afk_show_status = False
+            self._clear_client_afk_countdown(client)
+            client.afk_status = ""
+            if client.afk_status_label:
+                client.afk_status_label.setText("")
+                client.afk_status_label.setStyleSheet("")
+        elif not preserve_status:
+            client.afk_show_status = False
+            self._clear_client_afk_countdown(client)
+            client.afk_status = ""
+            if client.afk_status_label:
+                client.afk_status_label.setText("")
+                client.afk_status_label.setStyleSheet("")
+        if client.afk_toggle_button:
+            style_afk_toggle_button(client.afk_toggle_button, enabled)
 
     def remove_client(self, name: str) -> None:
         if name in self.clients:

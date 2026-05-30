@@ -174,7 +174,10 @@ class ShipColumn(ClientColumnSpec):
         super().__init__("ship", "Ship")
 
     def resize_mode(self) -> QHeaderView.ResizeMode:
-        return QHeaderView.ResizeMode.Stretch
+        return QHeaderView.ResizeMode.Fixed
+
+    def fixed_width(self) -> Optional[int]:
+        return 120
 
     def populate(self, table, row, column_index, client, window) -> None:
         ship_types = ["Sloop", "Brigantine", "Galleon", "Captaincy"]
@@ -182,7 +185,8 @@ class ShipColumn(ClientColumnSpec):
         combo = NoScrollComboBox()
         combo.addItems(ship_types)
         combo.setCurrentText(ship_type)
-        combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        combo.setMaximumWidth(112)
         client.ship_combo = combo
 
         def ship_type_changed(text, c=client):
@@ -193,7 +197,11 @@ class ShipColumn(ClientColumnSpec):
             )
 
         combo.currentTextChanged.connect(ship_type_changed)
-        table.setCellWidget(row, column_index, combo)
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.addWidget(combo, 0, Qt.AlignmentFlag.AlignLeft)
+        table.setCellWidget(row, column_index, container)
 
 
 class ClickableStatusLabel(QLabel):
@@ -220,6 +228,60 @@ class ClickableStatusLabel(QLabel):
         ):
             QApplication.clipboard().setText(self._client.match.to_clipboard_text())
         super().mousePressEvent(event)
+
+
+def style_afk_toggle_button(button: QPushButton, enabled: bool) -> None:
+    button.setObjectName("clientAfkOnButton" if enabled else "clientKillButton")
+    button.setText("On" if enabled else "Off")
+    button.setToolTip("Anti-AFK enabled" if enabled else "Anti-AFK disabled")
+    button.style().unpolish(button)
+    button.style().polish(button)
+
+
+class AfkToggleColumn(ClientColumnSpec):
+    def __init__(self) -> None:
+        super().__init__("afk_toggle", "AFK")
+
+    def resize_mode(self) -> QHeaderView.ResizeMode:
+        return QHeaderView.ResizeMode.Fixed
+
+    def fixed_width(self) -> Optional[int]:
+        return 56
+
+    def populate(self, table, row, column_index, client, window) -> None:
+        button = QPushButton("Off")
+        style_afk_toggle_button(button, client.afk_enabled)
+        client.afk_toggle_button = button
+        button.clicked.connect(
+            lambda _checked=False, c=client: window.toggle_client_anti_afk(c.name)
+        )
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(4, 0, 4, 0)
+        layout.addStretch()
+        layout.addWidget(button, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch()
+        table.setCellWidget(row, column_index, container)
+
+
+class AfkStatusColumn(ClientColumnSpec):
+    def __init__(self) -> None:
+        super().__init__("afk_status", "AFK status")
+
+    def resize_mode(self) -> QHeaderView.ResizeMode:
+        return QHeaderView.ResizeMode.Stretch
+
+    def populate(self, table, row, column_index, client, window) -> None:
+        del window
+        label = QLabel(client.afk_status)
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        client.afk_status_label = label
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(8, 0, 4, 0)
+        layout.addWidget(label, 1)
+        table.setCellWidget(row, column_index, container)
 
 
 class KillColumn(ClientColumnSpec):
@@ -277,6 +339,8 @@ CLIENT_TABLE_COLUMNS: tuple[ClientColumnSpec, ...] = (
     MetricIndicatorColumn("resolution", "Res"),
     ShipColumn(),
     StatusColumn(),
+    AfkToggleColumn(),
+    AfkStatusColumn(),
     KillColumn(),
 )
 
@@ -285,6 +349,25 @@ _METRIC_COLUMNS: dict[str, MetricIndicatorColumn] = {
     for col in CLIENT_TABLE_COLUMNS
     if isinstance(col, MetricIndicatorColumn)
 }
+
+
+def column_index(column_id: str) -> int:
+    return next(i for i, col in enumerate(CLIENT_TABLE_COLUMNS) if col.column_id == column_id)
+
+
+def any_client_afk_enabled(clients: dict[str, "Client"]) -> bool:
+    return any(client.afk_enabled for client in clients.values())
+
+
+def should_show_afk_status_column(clients: dict[str, "Client"]) -> bool:
+    return any(client.afk_enabled or client.afk_show_status for client in clients.values())
+
+
+def refresh_afk_status_column_visibility(
+    table: QTableWidget,
+    clients: dict[str, "Client"],
+) -> None:
+    table.setColumnHidden(column_index("afk_status"), not should_show_afk_status_column(clients))
 
 
 def configure_client_table(table: QTableWidget) -> None:
@@ -298,6 +381,7 @@ def configure_client_table(table: QTableWidget) -> None:
         if width is not None:
             table.setColumnWidth(index, width)
     table.verticalHeader().setDefaultSectionSize(40)
+    refresh_afk_status_column_visibility(table, {})
 
 
 def populate_client_row(

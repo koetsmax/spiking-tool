@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -77,6 +77,11 @@ class ControllerWindow(QMainWindow):
             self.sio.start()
         self._update_control_states()
         self._update_auto_hold_button()
+
+        self._afk_countdown_timer = QTimer(self)
+        self._afk_countdown_timer.setInterval(1000)
+        self._afk_countdown_timer.timeout.connect(self.client_manager.tick_afk_countdowns)
+        self._afk_countdown_timer.start()
 
     def request_client_roster(self) -> None:
         self.sio.emit("request_roster")
@@ -642,6 +647,23 @@ class ControllerWindow(QMainWindow):
         if client:
             self.emit_client_event("hold_request", client.name)
 
+    def refresh_afk_status_column_visibility(self) -> None:
+        from controller_ui.client_columns import refresh_afk_status_column_visibility
+
+        refresh_afk_status_column_visibility(
+            self.client_table,
+            self.client_manager.clients,
+        )
+
+    def toggle_client_anti_afk(self, display_name: str) -> None:
+        client = self.client_manager.get_client(display_name)
+        if not client:
+            return
+        enabled = not client.afk_enabled
+        self.client_manager.set_client_afk_enabled(display_name, enabled)
+        self.refresh_afk_status_column_visibility()
+        self.sio.emit("set_anti_afk", {"client": display_name, "enabled": enabled})
+
     def kill_client(self, display_name: str) -> None:
         print(f"Kill requested for {display_name}")
         self.sio.emit("kill_client", {"clients": [display_name]})
@@ -677,6 +699,7 @@ class ControllerWindow(QMainWindow):
             populate_client_row(self.client_table, row, client, self)
 
         self.client_table.resizeColumnToContents(name_column_index)
+        self.refresh_afk_status_column_visibility()
 
 
 # Backward-compatible alias

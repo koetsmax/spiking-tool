@@ -181,6 +181,47 @@ class SpikingServer:
                     await self.sio.emit("shutdown_client", to=client_sid)
 
         @self.sio.event
+        async def afk_status(sid, data):
+            client = self._display_name_for_sid(sid)
+            if isinstance(data, dict):
+                await self.sio.emit(
+                    "afk_status",
+                    data={"client": client, **data},
+                    room=self.controller,
+                )
+            else:
+                await self.sio.emit(
+                    "afk_status",
+                    data={"client": client, "type": "text", "message": str(data)},
+                    room=self.controller,
+                )
+
+        @self.sio.event
+        async def afk_state(sid, data):
+            client = self._display_name_for_sid(sid)
+            await self.sio.emit(
+                "afk_state",
+                data={"client": client, **data},
+                room=self.controller,
+            )
+
+        @self.sio.event
+        async def set_anti_afk(sid, data):
+            if sid != self.controller:
+                return
+            if not isinstance(data, dict):
+                return
+            target = data.get("client")
+            for client_sid, client in list(self.clients.items()):
+                if client.type == "client" and client.display_name == target:
+                    await self.sio.emit(
+                        "anti_afk",
+                        {"enabled": bool(data.get("enabled"))},
+                        to=client_sid,
+                    )
+                    return
+
+        @self.sio.event
         async def update_status(sid, data):
             client = self._display_name_for_sid(sid)
             await self.sio.emit(

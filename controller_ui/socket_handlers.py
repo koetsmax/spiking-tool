@@ -61,6 +61,24 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
         )
 
     @controller.sio.event()
+    def afk_status(data):
+        client_name = data.get("client")
+        if not client_name:
+            return
+        payload = {key: value for key, value in data.items() if key != "client"}
+        controller.client_manager.set_client_afk_status(client_name, payload)
+        controller.refresh_afk_status_column_visibility()
+
+    @controller.sio.event()
+    def afk_state(data):
+        controller.client_manager.set_client_afk_enabled(
+            data["client"],
+            bool(data.get("enabled")),
+            preserve_status=bool(data.get("preserve_status")),
+        )
+        controller.refresh_afk_status_column_visibility()
+
+    @controller.sio.event()
     def hold_request_ack(data):
         client = controller.client_manager.get_client(data["client"])
         if client:
