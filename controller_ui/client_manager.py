@@ -11,11 +11,13 @@ if TYPE_CHECKING:
     from spiking_tool.match import MatchDetails
 
 
-_REJOIN_COPYABLE_STATUSES = frozenset({
-    "Rejoining session",
-    "Awaiting rejoin prompt",
-    "Awaiting connection",
-})
+_REJOIN_COPYABLE_STATUSES = frozenset(
+    {
+        "Rejoining session",
+        "Awaiting rejoin prompt",
+        "Awaiting connection",
+    }
+)
 
 
 def _status_keeps_match_copyable(status, match) -> bool:
@@ -27,6 +29,12 @@ def _status_keeps_match_copyable(status, match) -> bool:
         if status in _REJOIN_COPYABLE_STATUSES:
             return True
         if status.startswith("Rejoining "):
+            return True
+        if status.startswith("Loading") or " - Loading" in status:
+            return True
+        if status.startswith("Loaded") or " - Loaded" in status:
+            return True
+        if status == "Waiting to load" or status.endswith(" - Waiting to load"):
             return True
     return False
 
@@ -64,11 +72,7 @@ class ClientManager:
         self.clients[name] = Client(name)
 
     def get_active_clients(self) -> list[str]:
-        return [
-            name
-            for name, client in self.clients.items()
-            if client.active_checkbox and client.active_checkbox.isChecked()
-        ]
+        return [name for name, client in self.clients.items() if client.active_checkbox and client.active_checkbox.isChecked()]
 
     def get_client(self, name: str) -> Optional[Client]:
         return self.clients.get(name)
@@ -99,19 +103,19 @@ class ClientManager:
         else:
             client.match = None
 
-        display_status, port = format_client_status(
-            status, client.port, current_status=client.status
-        )
+        display_status, port = format_client_status(status, client.port, current_status=client.status)
+        if isinstance(status, str) and status in (
+            "Pending...",
+            "Searching the seas",
+            "Loading (no match)",
+            "Loaded",
+        ):
+            port = None
         if port is not None:
             client.port = port
 
         match_for_region = client.match or client.last_match
-        if (
-            port is not None
-            and selected_region
-            and match_for_region is not None
-            and not match_in_selected_region(match_for_region, selected_region)
-        ):
+        if port is not None and selected_region and match_for_region is not None and not match_in_selected_region(match_for_region, selected_region):
             if isinstance(status, int):
                 display_status = f"{port} - wrong region"
             else:
@@ -240,10 +244,7 @@ class ClientManager:
         if biggest_match:
             matching_clients = ", ".join(port_counts[biggest_match])
             num_matching_clients = len(port_counts[biggest_match])
-            label.setText(
-                f"Biggest match: {num_matching_clients} on port {biggest_match} "
-                f"({matching_clients})"
-            )
+            label.setText(f"Biggest match: {num_matching_clients} on port {biggest_match} " f"({matching_clients})")
             self.biggest_match = num_matching_clients
         else:
             label.setText("No matches found")
@@ -260,9 +261,7 @@ class ClientManager:
     def sort_clients_by_name(self) -> None:
         from spiking_tool.client_identity import sort_display_name_key
 
-        self.clients = dict(
-            sorted(self.clients.items(), key=lambda item: sort_display_name_key(item[0]))
-        )
+        self.clients = dict(sorted(self.clients.items(), key=lambda item: sort_display_name_key(item[0])))
 
     def sync_client_roster(self, display_names: list[str]) -> None:
         incoming = {name for name in display_names if name != "Controller"}

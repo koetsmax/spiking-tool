@@ -13,6 +13,7 @@ import sot
 from sot.AntiAfkManager import AntiAfkManager
 from sot.AutomationManager import AutomationManager
 from sot.ConnectionManager import ConnectionManager
+from sot.SessionLoadTracker import SessionLoadTracker
 from spiking_tool.remote_log import remote_log_bridge
 
 
@@ -78,6 +79,16 @@ def register_client_handlers(
         lambda message, level="INFO": remote_log_bridge.enqueue(f"[AFK] {message}", level)
     )
 
+    session_load = SessionLoadTracker(
+        automation.screen,
+        should_stop=lambda: automation.stop,
+        log=lambda message, level="INFO": remote_log_bridge.enqueue(f"[Load] {message}", level),
+    )
+    automation.set_session_load_tracker(session_load)
+
+    async def emit_client_status(status) -> None:
+        await sio.emit("update_status", data=status)
+
     @sio.event()
     async def anti_afk(data):
         if not isinstance(data, dict):
@@ -126,6 +137,8 @@ def register_client_handlers(
                 await asyncio.sleep(sail_delay)
             connection.clear_disconnect()
             await automation.sail(sio, connection.portspike)
+            if not connection.portspike:
+                await session_load.start(emit_client_status)
 
         await run_if_selected(data, action)
 
@@ -175,8 +188,11 @@ def register_client_handlers(
     async def forget_match(data):
         if is_selected(data):
             state.prev_port = None
+            session_load.cancel()
+            session_load.forget_match()
             connection.forget_last_match()
-            print("Forgot last match — ready to detect management server again")
+            await emit_client_status("Pending...")
+            remote_log_bridge.enqueue("Forgot last match", "INFO")
 
     @sio.event()
     async def fix_resolution(data):
@@ -185,7 +201,12 @@ def register_client_handlers(
     async def on_join(match_data):
         try:
             state.prev_port = int(match_data["management_port"])
+            session_load.record_match(state.prev_port)
             await sio.emit("join", match_data)
+            if session_load.reset_waiting:
+                await emit_client_status(session_load.waiting_to_load_status())
+            elif session_load.monitoring and not session_load.loaded:
+                await emit_client_status(session_load.loading_status())
         except Exception:
             traceback.print_exc()
 

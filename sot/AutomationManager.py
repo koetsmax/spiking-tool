@@ -17,6 +17,10 @@ class AutomationManager:
         self.screen = GameScreenMatcher(should_stop=lambda: self.stop)
         self._check_resolution_after_launch = False
         self._resolution_metric_state: str | None = None
+        self._session_load = None
+
+    def set_session_load_tracker(self, tracker) -> None:
+        self._session_load = tracker
 
     def activate_window(self):
         self.screen.activate_window()
@@ -173,8 +177,18 @@ class AutomationManager:
         await asyncio.sleep(0.3)
         await sio.emit("update_status", data=f"Rejoining {port}")
 
+    async def wait_until_session_loaded(self, sio, *, already_loaded_ok: bool = False) -> bool:
+        if self._session_load is None:
+            return True
+        if not await self._session_load.wait_until_loaded(already_loaded_ok=already_loaded_ok):
+            await sio.emit("update_status", data="Timed out waiting to load in")
+            return False
+        return True
+
     async def reset(self, sio, leave, portspiking):
         if portspiking:
+            if self._session_load is not None:
+                self._session_load.cancel()
             await sio.emit("update_status", data="Awaiting connection")
             self.activate_window()
             await asyncio.sleep(0.2)
@@ -193,6 +207,17 @@ class AutomationManager:
 
             keyboard.press_and_release("esc")
         elif leave:
+            if self._session_load is not None:
+                self._session_load.begin_reset_wait()
+                await sio.emit("update_status", data=self._session_load.waiting_to_load_status())
+            else:
+                await sio.emit("update_status", data="Waiting to load")
+            try:
+                if not await self.wait_until_session_loaded(sio, already_loaded_ok=True):
+                    return
+            finally:
+                if self._session_load is not None:
+                    self._session_load.end_reset_wait()
             await sio.emit("update_status", data="Leaving Game")
             await self.leave_session_via_menu()
 
