@@ -158,8 +158,12 @@ def register_client_handlers(
     @sio.event()
     async def reset(data):
         if is_selected(data):
+            session_load.cancel()
+            session_load.forget_match()
             if connection.portspike:
                 connection.begin_portspike_cycle()
+            else:
+                connection.forget_last_match()
             await automation.reset(sio, leave=True, portspiking=connection.portspike)
 
     @sio.event()

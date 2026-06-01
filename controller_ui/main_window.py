@@ -167,9 +167,18 @@ class ControllerWindow(QMainWindow):
         clients_layout = QVBoxLayout(self.clients_panel)
         clients_layout.setContentsMargins(12, 12, 12, 12)
 
+        header_row = QWidget()
+        header_layout = QHBoxLayout(header_row)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(6)
         title = QLabel("Clients")
         title.setObjectName("sectionTitle")
-        clients_layout.addWidget(title)
+        self.clients_count_label = QLabel("(0)")
+        self.clients_count_label.setObjectName("clientsCount")
+        header_layout.addWidget(title)
+        header_layout.addWidget(self.clients_count_label)
+        header_layout.addStretch()
+        clients_layout.addWidget(header_row)
 
         self.biggest_match_label = QLabel("No matches found")
         self.biggest_match_label.setObjectName("biggestMatch")
@@ -618,6 +627,7 @@ class ControllerWindow(QMainWindow):
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
             self.client_manager.reset_clients()
+            self.client_manager.update_biggest_match(self.biggest_match_label)
         if event == "forget_match":
             for client_name in active_clients:
                 client = self.client_manager.get_client(client_name)
@@ -700,6 +710,11 @@ class ControllerWindow(QMainWindow):
 
         self.client_table.resizeColumnToContents(name_column_index)
         self.refresh_afk_status_column_visibility()
+        self._refresh_clients_count()
+
+    def _refresh_clients_count(self) -> None:
+        count = len(self.client_manager.clients)
+        self.clients_count_label.setText(f"({count})")
 
 
 # Backward-compatible alias

@@ -135,6 +135,11 @@ QLabel#sectionTitle {
     font-weight: 600;
     color: #89b4fa;
 }
+QLabel#clientsCount {
+    font-size: 14px;
+    font-weight: 600;
+    color: #a6adc8;
+}
 QLabel#biggestMatch {
     background-color: #313244;
     border-radius: 6px;

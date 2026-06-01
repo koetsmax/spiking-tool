@@ -39,6 +39,42 @@ def _status_keeps_match_copyable(status, match) -> bool:
     return False
 
 
+def _status_clears_all_match_state(status) -> bool:
+    if not isinstance(status, str):
+        return False
+    if status in (
+        "Pending...",
+        "Searching the seas",
+        "Leaving Game",
+        "Ready",
+        "Starting Game",
+        "Waiting for start screen",
+        "Selecting gamemode",
+        "Selecting ship",
+        "Confirming crew",
+    ):
+        return True
+    if status == "Waiting to load" or status.endswith(" - Waiting to load"):
+        return True
+    return False
+
+
+def _status_clears_stale_port(status) -> bool:
+    if not isinstance(status, str):
+        return False
+    if status.startswith("Loading") or " - Loading" in status:
+        return True
+    if status.startswith("Loaded") or " - Loaded" in status:
+        return True
+    return False
+
+
+def _status_confirms_port(status, match) -> bool:
+    if match is not None:
+        return True
+    return isinstance(status, int)
+
+
 class Client:
     def __init__(self, name: str) -> None:
         self.name = name
@@ -94,24 +130,25 @@ class ClientManager:
         if not client:
             return
 
+        if _status_clears_all_match_state(status):
+            client.match = None
+            client.last_match = None
+            client.port = None
+        elif _status_clears_stale_port(status):
+            client.port = None
+            client.last_match = None
+
         if match is not None:
             client.match = MatchDetails.from_payload(match)
             client.last_match = client.match
         elif _status_keeps_match_copyable(status, match):
-            if client.match is None and client.last_match is not None:
+            if client.match is None and client.last_match is not None and client.port is not None:
                 client.match = client.last_match
         else:
             client.match = None
 
         display_status, port = format_client_status(status, client.port, current_status=client.status)
-        if isinstance(status, str) and status in (
-            "Pending...",
-            "Searching the seas",
-            "Loading (no match)",
-            "Loaded",
-        ):
-            port = None
-        if port is not None:
+        if _status_confirms_port(status, match) and port is not None:
             client.port = port
 
         match_for_region = client.match or client.last_match
@@ -233,8 +270,10 @@ class ClientManager:
     def update_biggest_match(self, label: QLabel) -> None:
         port_counts: dict[str, list[str]] = {}
         for client_name, client in self.clients.items():
-            if client.port is not None:
-                port_counts.setdefault(client.port, []).append(client_name)
+            if client.match is None:
+                continue
+            port = client.match.management_port_digits
+            port_counts.setdefault(port, []).append(client_name)
 
         biggest_match = None
         for port, clients in port_counts.items():
@@ -251,9 +290,14 @@ class ClientManager:
             self.biggest_match = None
 
     def reset_clients(self) -> None:
+        from controller_ui.client_columns import ClickableStatusLabel
+
         for client in self.clients.values():
             client.port = None
             client.match = None
+            client.last_match = None
+            if client.status_label and isinstance(client.status_label, ClickableStatusLabel):
+                client.status_label.update_match_style()
 
     def get_biggest_match(self) -> Optional[int]:
         return self.biggest_match
