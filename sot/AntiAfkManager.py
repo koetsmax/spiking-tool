@@ -6,7 +6,7 @@ import asyncio
 import logging
 import random
 from datetime import datetime
-from typing import Awaitable, Callable, Optional
+from typing import Awaitable, Callable, Literal, Optional
 
 import keyboard
 
@@ -21,6 +21,7 @@ from spiking_tool.afk_status import (
     AFK_PHASE_LOADED,
     AFK_PHASE_POST_DISCONNECT_WAIT,
     AFK_PHASE_REJOIN_WAIT,
+    AFK_PHASE_RESUME_LOADING,
     AfkStatusPayload,
     CountdownMode,
     format_elapsed,
@@ -45,6 +46,8 @@ KEY_HOLD_BASE_MS = 500
 SLEEP_BASE_SECONDS = 120
 WINDOW_FOCUS_DELAY_SECONDS = 0.2
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+AfkScreenState = Literal["rejoin", "hazelnut", "loading", "in_game"]
 
 
 class AntiAfkManager:
@@ -82,13 +85,16 @@ class AntiAfkManager:
 
     async def _notify_state(self, enabled: bool, *, preserve_status: bool = False) -> None:
         if self._state_callback:
-            await self._state_callback(enabled, preserve_status)
+            try:
+                await self._state_callback(enabled, preserve_status)
+            except Exception:
+                pass
 
     def _write_log(self, message: str, level: str = "INFO") -> None:
         if self._log:
             self._log(message, level)
-            return
-        logger.log(getattr(logging, level, logging.INFO), message)
+        else:
+            logger.log(getattr(logging, level, logging.INFO), message)
 
     async def set_enabled(self, enabled: bool) -> None:
         if enabled:
@@ -174,7 +180,10 @@ class AntiAfkManager:
             elif text:
                 self._write_log(text)
         if self._emit_status:
-            await self._emit_status(payload.to_payload())
+            try:
+                await self._emit_status(payload.to_payload())
+            except Exception:
+                pass
 
     async def _emit_error(self, message: str) -> None:
         self._write_log(f"Error: {message}", "ERROR")
@@ -301,9 +310,30 @@ class AntiAfkManager:
             phase=AFK_PHASE_POST_DISCONNECT_WAIT,
         )
 
-    async def _accept_hazelnut(self) -> bool:
+    def _detect_afk_screen_state(self) -> AfkScreenState:
+        """Infer where we are in the AFK flow from the current game screen."""
+        # Beard error → rejoin → loading bar (same priority as the AFK cycle).
+        if self._screen.screen_visible(HAZELNUT_IMAGE):
+            return "hazelnut"
+        if self._screen.screen_visible(REJOIN_IMAGE):
+            return "rejoin"
+        loading_visible, _, _ = self._screen.loading_bar_visible()
+        if loading_visible:
+            return "loading"
+        return "in_game"
+
+    async def _accept_hazelnut(self, *, already_visible: bool = False) -> bool:
         self._write_log("Accepting hazelnut error")
-        if not await self._wait_for_screen(
+        if already_visible:
+            await self._emit(
+                AfkStatusPayload(
+                    type="text",
+                    message="Resuming at error dialog",
+                    phase=AFK_PHASE_HAZELNUT_WAIT,
+                ),
+                log=False,
+            )
+        elif not await self._wait_for_screen(
             HAZELNUT_IMAGE,
             "Watching for error dialog",
             phase=AFK_PHASE_HAZELNUT_WAIT,
@@ -314,18 +344,106 @@ class AntiAfkManager:
             return False
         return True
 
-    async def _accept_rejoin(self) -> bool:
-        self._write_log("Waiting for rejoin prompt after hazelnut")
-        if not await self._wait_for_screen(
-            REJOIN_IMAGE,
-            "Watching for rejoin prompt",
-            phase=AFK_PHASE_REJOIN_WAIT,
-        ):
-            await self._fatal_error("Rejoin prompt not found")
-            return False
+    async def _accept_rejoin(self, *, already_visible: bool = False) -> bool:
+        if already_visible:
+            self._write_log("Accepting rejoin prompt (already visible)")
+            await self._emit(
+                AfkStatusPayload(
+                    type="text",
+                    message="Resuming at rejoin prompt",
+                    phase=AFK_PHASE_REJOIN_WAIT,
+                ),
+                log=False,
+            )
+        else:
+            self._write_log("Waiting for rejoin prompt after hazelnut")
+            if not await self._wait_for_screen(
+                REJOIN_IMAGE,
+                "Watching for rejoin prompt",
+                phase=AFK_PHASE_REJOIN_WAIT,
+            ):
+                await self._fatal_error("Rejoin prompt not found")
+                return False
         if not await self._press_key("enter", base_ms=1000):
             return False
         return await self._wait_for_load_in()
+
+    async def _resume_from_loading_bar(self) -> bool:
+        """Loading bar visible — next screen may be in-world or connection error."""
+        self._write_log("Loading bar visible while resuming AFK — polling for next screen")
+        await self._emit(
+            AfkStatusPayload(
+                type="text",
+                message="Resuming — loading bar visible",
+                phase=AFK_PHASE_RESUME_LOADING,
+            ),
+            log=False,
+        )
+        while self._enabled:
+            if self._screen.screen_visible(HAZELNUT_IMAGE):
+                self._write_log("Error dialog appeared during load")
+                if not await self._accept_hazelnut(already_visible=True):
+                    return False
+                return await self._accept_rejoin()
+            if self._screen.screen_visible(REJOIN_IMAGE):
+                self._write_log("Rejoin prompt appeared during load")
+                return await self._accept_rejoin(already_visible=True)
+            loading_visible, dark_ratio, avg_lum = self._screen.loading_bar_visible()
+            self._write_log(
+                f"Loading bar poll — {'visible' if loading_visible else 'not visible'} "
+                f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})"
+            )
+            if not loading_visible:
+                self._write_log("Loading bar cleared — assuming back in world")
+                await self._emit(
+                    AfkStatusPayload(
+                        type="text",
+                        message="Back in world",
+                        phase=AFK_PHASE_LOADED,
+                    ),
+                    log=False,
+                )
+                await self._sleep_between_actions()
+                return True
+            await asyncio.sleep(SCREEN_POLL_SECONDS)
+        return False
+
+    async def _resume_from_detected_screen(self) -> bool:
+        """Continue the AFK cycle from the current game screen instead of restarting."""
+        if not await self._focus_game():
+            await self._fatal_error("SoT window not found")
+            return False
+
+        screen_state = self._detect_afk_screen_state()
+        self._write_log(f"Resuming AFK from detected screen: {screen_state}")
+
+        if screen_state == "hazelnut":
+            if not await self._accept_hazelnut(already_visible=True):
+                return False
+            if not await self._accept_rejoin():
+                return False
+            await self._sleep_between_actions()
+            return True
+
+        if screen_state == "rejoin":
+            if not await self._accept_rejoin(already_visible=True):
+                return False
+            await self._sleep_between_actions()
+            return True
+
+        if screen_state == "loading":
+            return await self._resume_from_loading_bar()
+
+        await self._emit(
+            AfkStatusPayload(
+                type="text",
+                message="Resuming in world",
+                phase=AFK_PHASE_LOADED,
+            ),
+            log=False,
+        )
+        await self._sleep_between_actions()
+        return True
 
     async def _wait_for_load_in(self) -> bool:
         self._write_log("Waiting for load-in (bottom loading bar)")
@@ -370,6 +488,8 @@ class AntiAfkManager:
 
     async def _run_loop(self) -> None:
         try:
+            if not await self._resume_from_detected_screen():
+                return
             while self._enabled:
                 await self._emit(
                     AfkStatusPayload(

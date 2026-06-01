@@ -56,8 +56,8 @@ class SessionLoadTracker:
     def _write_log(self, message: str, level: str = "INFO") -> None:
         if self._log:
             self._log(message, level)
-            return
-        logger.log(getattr(logging, level, logging.INFO), message)
+        else:
+            logger.log(getattr(logging, level, logging.INFO), message)
 
     @property
     def monitoring(self) -> bool:

@@ -23,10 +23,10 @@ GAME_CLOSE_TIMEOUT_SECONDS = 30.0
 IMAGE_CONFIDENCE = 0.9
 SCREEN_POLL_SECONDS = 0.5
 # Bottom loading bar: nearly featureless black strip — template match false-positives on dark UI.
-# Night/outpost loads are dimmer than day — keep pixel and average thresholds separate and relaxed.
-LOADING_BAR_PIXEL_DARK_LUMINANCE = 48
-LOADING_BAR_MAX_AVG_LUMINANCE = 58
-LOADING_BAR_DARK_RATIO = 0.50
+# Pixel darkness and region average use separate thresholds so dim night loads still match.
+LOADING_BAR_PIXEL_DARK_LUMINANCE = 65
+LOADING_BAR_MAX_AVG_LUMINANCE = 78
+LOADING_BAR_DARK_RATIO = 0.38
 LOADING_BAR_HEIGHT_FRACTION = 0.06
 LOADING_BAR_WIDTH_FRACTION = 0.7
 LOADING_BAR_BOTTOM_INSET_FRACTION = 0.02
@@ -430,7 +430,7 @@ class GameScreenMatcher:
         lum_sum = 0.0
         for pixel in shot.getdata():
             r, g, b = pixel[0], pixel[1], pixel[2]
-            lum = 0.299 * r + 0.587 * g + 0.114 * b
+            lum = (r + g + b) / 3
             lum_sum += lum
             total += 1
             if lum <= LOADING_BAR_PIXEL_DARK_LUMINANCE:

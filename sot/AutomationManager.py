@@ -1,4 +1,5 @@
 import asyncio
+from typing import Awaitable, Callable, Optional
 
 import keyboard
 
@@ -17,6 +18,17 @@ class AutomationManager:
         self._check_resolution_after_launch = False
         self._resolution_metric_state: str | None = None
         self._session_load = None
+        self._emit_status: Optional[Callable[[object], Awaitable[None]]] = None
+
+    def set_status_emitter(self, emitter: Callable[[object], Awaitable[None]]) -> None:
+        self._emit_status = emitter
+
+    async def emit_status(self, sio, status) -> None:
+        if self._emit_status is not None:
+            await self._emit_status(status)
+            return
+        if getattr(sio, "connected", False):
+            await sio.emit("update_status", data=status)
 
     def set_session_load_tracker(self, tracker) -> None:
         self._session_load = tracker
@@ -43,9 +55,9 @@ class AutomationManager:
 
     async def _emit_quit_game_status(self, sio, closed: bool) -> None:
         if closed:
-            await sio.emit("update_status", data="Game closed")
+            await self.emit_status(sio,"Game closed")
         else:
-            await sio.emit("update_status", data="Game still running after close request")
+            await self.emit_status(sio,"Game still running after close request")
 
     def check_game_resolution(self):
         return self.screen.ensure_target_resolution()
@@ -119,7 +131,7 @@ class AutomationManager:
 
     async def wait_for_play_screen(self, sio):
         async def on_promo_skipped():
-            await sio.emit("update_status", data="Skipped promo video")
+            await self.emit_status(sio,"Skipped promo video")
 
         return await self.screen.wait_for_play_screen(on_promo_skipped=on_promo_skipped)
 
@@ -128,11 +140,11 @@ class AutomationManager:
 
     async def set_ship(self, sio, ship_type):
         self.ship = ship_type
-        await sio.emit("update_status", data=f"Ship set to {self.ship}")
+        await self.emit_status(sio,f"Ship set to {self.ship}")
 
     async def launch_game(self, sio, leave):
         self._check_resolution_after_launch = True
-        await sio.emit("update_status", data="Launching Game")
+        await self.emit_status(sio,"Launching Game")
         keyboard.press_and_release("win")
         await asyncio.sleep(2.5)
         keyboard.write("sea of thieves")
@@ -145,16 +157,16 @@ class AutomationManager:
         self.activate_window()
         await asyncio.sleep(0.2)
         keyboard.press_and_release("enter")
-        await sio.emit("update_status", data="Searching the seas")
+        await self.emit_status(sio,"Searching the seas")
 
     async def rejoin_session(self, sio, portspiking, port):
         if not port:
-            await sio.emit("update_status", data="No previous session found")
+            await self.emit_status(sio,"No previous session found")
             return
         if not portspiking:
-            await sio.emit("update_status", data="Only available during portspike")
+            await self.emit_status(sio,"Only available during portspike")
             return
-        await sio.emit("update_status", data="Rejoining session")
+        await self.emit_status(sio,"Rejoining session")
         await asyncio.sleep(0.5)
         self.activate_window()
         await asyncio.sleep(0.2)
@@ -168,19 +180,19 @@ class AutomationManager:
 
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.3)
-        await sio.emit("update_status", data="Awaiting rejoin prompt")
+        await self.emit_status(sio,"Awaiting rejoin prompt")
         if not await self.wait_for_screen(sio, "img/rejoin_prompt.png", "waiting for rejoin prompt"):
             return
 
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.3)
-        await sio.emit("update_status", data=f"Rejoining {port}")
+        await self.emit_status(sio,f"Rejoining {port}")
 
     async def wait_until_session_loaded(self, sio, *, already_loaded_ok: bool = False) -> bool:
         if self._session_load is None:
             return True
         if not await self._session_load.wait_until_loaded(already_loaded_ok=already_loaded_ok):
-            await sio.emit("update_status", data="Timed out waiting to load in")
+            await self.emit_status(sio,"Timed out waiting to load in")
             return False
         return True
 
@@ -188,7 +200,7 @@ class AutomationManager:
         if portspiking:
             if self._session_load is not None:
                 self._session_load.cancel()
-            await sio.emit("update_status", data="Awaiting connection")
+            await self.emit_status(sio,"Awaiting connection")
             self.activate_window()
             await asyncio.sleep(0.2)
             if not await self.wait_for_screen(
@@ -200,7 +212,7 @@ class AutomationManager:
 
             keyboard.press_and_release("enter")
             await asyncio.sleep(0.3)
-            await sio.emit("update_status", data="Awaiting rejoin prompt")
+            await self.emit_status(sio,"Awaiting rejoin prompt")
             if not await self.wait_for_screen(sio, "img/rejoin_prompt.png", "waiting for rejoin prompt"):
                 return
 
@@ -208,16 +220,16 @@ class AutomationManager:
         elif leave:
             if self._session_load is not None:
                 self._session_load.begin_reset_wait()
-                await sio.emit("update_status", data=self._session_load.waiting_to_load_status())
+                await self.emit_status(sio,self._session_load.waiting_to_load_status())
             else:
-                await sio.emit("update_status", data="Waiting to load")
+                await self.emit_status(sio,"Waiting to load")
             try:
                 if not await self.wait_until_session_loaded(sio, already_loaded_ok=True):
                     return
             finally:
                 if self._session_load is not None:
                     self._session_load.end_reset_wait()
-            await sio.emit("update_status", data="Leaving Game")
+            await self.emit_status(sio,"Leaving Game")
             await self.leave_session_via_menu()
 
         if not portspiking:
@@ -238,20 +250,20 @@ class AutomationManager:
             ):
                 return
 
-            await sio.emit("update_status", data="Starting Game")
+            await self.emit_status(sio,"Starting Game")
             await asyncio.sleep(0.3)
             keyboard.press_and_release("enter")
 
         if not await self.wait_for_play_screen(sio):
             return
 
-        await sio.emit("update_status", data="Waiting for the popup")
+        await self.emit_status(sio,"Waiting for the popup")
         await asyncio.sleep(3)
 
         await self.dismiss_popup_if_visible("img/stupid_popup_1.png")
         await self.dismiss_popup_if_visible("img/stupid_popup_2.png")
 
-        await sio.emit("update_status", data="Selecting gamemode")
+        await self.emit_status(sio,"Selecting gamemode")
         keyboard.press_and_release("enter")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("right")
@@ -262,7 +274,7 @@ class AutomationManager:
         await asyncio.sleep(0.6)
 
         print(self.ship)
-        await sio.emit("update_status", data="Selecting ship")
+        await self.emit_status(sio,"Selecting ship")
         if self.ship == "Captaincy":
             keyboard.press_and_release("right")
             await asyncio.sleep(0.6)
@@ -291,31 +303,31 @@ class AutomationManager:
             keyboard.press_and_release("down")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
-        await sio.emit("update_status", data="Confirming crew")
+        await self.emit_status(sio,"Confirming crew")
         await asyncio.sleep(0.6)
         keyboard.press_and_release("enter")
 
         if not await self.wait_for_screen(sio, "img/sail_screen.png", "Waiting for sail screen"):
             return
 
-        await sio.emit("update_status", data="Ready")
+        await self.emit_status(sio,"Ready")
         print("waiting on set sail screen")
 
     async def kill_game(self, sio):
-        await sio.emit("update_status", data="Killing Game")
+        await self.emit_status(sio,"Killing Game")
         await self._emit_quit_game_status(sio, await self.quit_game_gracefully())
 
     async def stop_functions(self, sio):
-        await sio.emit("update_status", data="Stopping functions")
+        await self.emit_status(sio,"Stopping functions")
         self.stop = True
         await asyncio.sleep(2.5)
         self.stop = False
-        await sio.emit("update_status", data="No longer stopping functions")
+        await self.emit_status(sio,"No longer stopping functions")
         await asyncio.sleep(2.5)
-        await sio.emit("update_status", data="Pending...")
+        await self.emit_status(sio,"Pending...")
 
     async def invite_request(self, sio, person_to_invite):
-        await sio.emit("update_status", data=f"Inviting {person_to_invite}")
+        await self.emit_status(sio,f"Inviting {person_to_invite}")
         self.activate_window()
         await asyncio.sleep(0.2)
 
@@ -358,4 +370,4 @@ class AutomationManager:
         keyboard.press_and_release("enter")
         await asyncio.sleep(1)
         print("User invited")
-        await sio.emit("update_status", data=f"Invited {person_to_invite}")
+        await self.emit_status(sio,f"Invited {person_to_invite}")

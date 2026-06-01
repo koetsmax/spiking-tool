@@ -20,6 +20,7 @@ AFK_PHASE_REJOIN_WAIT = "rejoin_wait"
 AFK_PHASE_LOAD_IN = "load_in"
 AFK_PHASE_LOADED = "loaded"
 AFK_PHASE_IDLE = "idle"
+AFK_PHASE_RESUME_LOADING = "resume_loading"
 AFK_PHASE_ERROR = "error"
 
 AFK_PHASE_DESCRIPTIONS: dict[str, str] = {
@@ -54,6 +55,10 @@ AFK_PHASE_DESCRIPTIONS: dict[str, str] = {
         "Random wait (about 30 seconds to 2 minutes) before the next AFK cycle. "
         "No disconnect is active during this time."
     ),
+    AFK_PHASE_RESUME_LOADING: (
+        "The loading bar is visible but the next screen is unknown — waiting for it to finish "
+        "(back in world), or for the connection error or rejoin prompt to appear."
+    ),
     AFK_PHASE_ERROR: "Anti-AFK stopped because something failed. See client logs for details.",
 }
 
@@ -70,6 +75,10 @@ _TEXT_MESSAGE_PHASE: dict[str, str] = {
     "Watching for rejoin prompt": AFK_PHASE_REJOIN_WAIT,
     "Loading into world": AFK_PHASE_LOAD_IN,
     "Back in world": AFK_PHASE_LOADED,
+    "Resuming at rejoin prompt": AFK_PHASE_REJOIN_WAIT,
+    "Resuming at error dialog": AFK_PHASE_HAZELNUT_WAIT,
+    "Resuming in world": AFK_PHASE_LOADED,
+    "Resuming — loading bar visible": AFK_PHASE_RESUME_LOADING,
 }
 
 

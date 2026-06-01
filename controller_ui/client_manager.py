@@ -329,7 +329,7 @@ class ClientManager:
         if not client:
             return
         client.afk_enabled = enabled
-        if enabled:
+        if enabled and not preserve_status:
             client.afk_show_status = False
             self._clear_client_afk_countdown(client)
             client.afk_last_payload = None
@@ -338,7 +338,7 @@ class ClientManager:
                 client.afk_status_label.setText("")
                 client.afk_status_label.setToolTip("")
                 client.afk_status_label.setStyleSheet("")
-        elif not preserve_status:
+        elif not enabled and not preserve_status:
             client.afk_show_status = False
             self._clear_client_afk_countdown(client)
             client.afk_last_payload = None

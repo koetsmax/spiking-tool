@@ -229,9 +229,15 @@ class SpikingServer:
         @self.sio.event
         async def update_status(sid, data):
             client = self._display_name_for_sid(sid)
+            if isinstance(data, dict) and "status" in data:
+                payload = {"client": client, "status": data["status"]}
+                if data.get("match") is not None:
+                    payload["match"] = data["match"]
+            else:
+                payload = {"client": client, "status": data}
             await self.sio.emit(
                 "update_status",
-                data={"client": client, "status": data},
+                data=payload,
                 room=self.controller,
             )
 
