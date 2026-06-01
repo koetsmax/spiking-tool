@@ -2,10 +2,23 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from controller_ui.main_window import ControllerWindow
+
+logger = logging.getLogger(__name__)
+
+
+def _log_roster_changes(controller: "ControllerWindow", roster: list[str]) -> None:
+    current = {name for name in roster if name != "Controller"}
+    previous = controller._connected_client_roster
+    for name in sorted(current - previous):
+        logger.info("Client connected: %s", name)
+    for name in sorted(previous - current):
+        logger.info("Client disconnected: %s", name)
+    controller._connected_client_roster = current
 
 
 def register_socket_handlers(controller: "ControllerWindow") -> None:
@@ -15,6 +28,7 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
 
     @controller.sio.event()
     def client_connect(data):
+        _log_roster_changes(controller, data)
         controller.change_region()
         controller.set_port_spike()
         controller.set_desired_port_mode()
@@ -25,9 +39,7 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
 
     @controller.sio.event()
     def client_disconnect(data):
-        for client_name, client in controller.client_manager.clients.copy().items():
-            if client_name not in data and client.holding:
-                print(f"{client_name} DISCONNECTED WHILE HOLDING A SHIP!!!!")
+        _log_roster_changes(controller, data)
         controller.client_manager.sync_client_roster(data)
         controller.sort_client_list()
         controller.logging_tab.sync_client_list(controller._sorted_client_names())
@@ -77,10 +89,3 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
             preserve_status=bool(data.get("preserve_status")),
         )
         controller.refresh_afk_status_column_visibility()
-
-    @controller.sio.event()
-    def hold_request_ack(data):
-        client = controller.client_manager.get_client(data["client"])
-        if client:
-            client.holding = True
-            print(f"{client.name} is now holding")

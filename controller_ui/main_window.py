@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QTableWidget,
     QTabWidget,
@@ -33,7 +34,6 @@ from spiking_tool.ship_sail_delay import compute_sail_delay
 from threadedsio import ThreadedSocketClient
 
 _TIP_PORT_SPIKE_REQUIRED = "Enable Port spike first."
-_TIP_AUTO_HOLD_BLOCKS_PORT_SPIKE = "Turn off Auto hold to use Port spike."
 _TIP_REJOIN_REQUIRES_PORT_SPIKE = "Rejoin session requires Port spike to be enabled."
 _TIP_AUTO_SPIKE_BLOCKS_MANUAL = (
     "Disabled while Auto spike mode is running — the controller resets and sails automatically."
@@ -62,9 +62,9 @@ class ControllerWindow(QMainWindow):
         )
         self.client_manager = ClientManager()
         self.log_store = ClientLogStore()
+        self._connected_client_roster: set[str] = set()
         self.desired_port_mode = False
         self.desired_port = None
-        self.auto_hold_mode = False
         self.auto_spike_mode = False
         self.number_of_ships = None
         self.person_to_invite = None
@@ -76,7 +76,6 @@ class ControllerWindow(QMainWindow):
         if hasattr(self.sio, "start"):
             self.sio.start()
         self._update_control_states()
-        self._update_auto_hold_button()
 
         self._afk_countdown_timer = QTimer(self)
         self._afk_countdown_timer.setInterval(1000)
@@ -167,9 +166,18 @@ class ControllerWindow(QMainWindow):
         clients_layout = QVBoxLayout(self.clients_panel)
         clients_layout.setContentsMargins(12, 12, 12, 12)
 
+        header_row = QWidget()
+        header_layout = QHBoxLayout(header_row)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(6)
         title = QLabel("Clients")
         title.setObjectName("sectionTitle")
-        clients_layout.addWidget(title)
+        self.clients_count_label = QLabel("(0)")
+        self.clients_count_label.setObjectName("clientsCount")
+        header_layout.addWidget(title)
+        header_layout.addWidget(self.clients_count_label)
+        header_layout.addStretch()
+        clients_layout.addWidget(header_row)
 
         self.biggest_match_label = QLabel("No matches found")
         self.biggest_match_label.setObjectName("biggestMatch")
@@ -276,15 +284,6 @@ class ControllerWindow(QMainWindow):
         )
         layout.addWidget(ships_row)
 
-        layout.addWidget(self._section_label("Auto hold"))
-        self.auto_hold_button = QPushButton("Toggle auto hold")
-        self.auto_hold_button.setObjectName("autoHoldToggleButton")
-        self.auto_hold_button.setProperty("autoHoldActive", False)
-        self.auto_hold_button.setProperty("lastPressed", False)
-        self.auto_hold_button.clicked.connect(self.toggle_auto_hold)
-        self._action_buttons["auto_hold"] = self.auto_hold_button
-        layout.addWidget(self.auto_hold_button)
-
         layout.addStretch()
         return tab
 
@@ -326,9 +325,36 @@ class ControllerWindow(QMainWindow):
             lambda: self.emit_client_event("forget_match"),
         )
 
-        layout.addWidget(self._section_label("Hold"))
+        layout.addWidget(self._section_label("Match simulation"))
+        sim_size_row = QWidget()
+        sim_size_layout = QHBoxLayout(sim_size_row)
+        sim_size_layout.setContentsMargins(0, 0, 0, 0)
+        sim_size_layout.setSpacing(6)
+        sim_size_label = QLabel("Match size (1-6)")
+        self._sim_match_size_spin = QSpinBox()
+        self._sim_match_size_spin.setRange(1, 6)
+        self._sim_match_size_spin.setValue(4)
+        sim_size_layout.addWidget(sim_size_label)
+        sim_size_layout.addWidget(self._sim_match_size_spin, stretch=1)
+        layout.addWidget(sim_size_row)
+
         self._add_action_button(
-            layout, "Simulate hold request", "hold_request", self.start_hold_request
+            layout,
+            "Simulate match",
+            "simulate_match",
+            self._debug_simulate_match,
+        )
+        self._add_action_button(
+            layout,
+            "Reset simulation",
+            "reset_simulation",
+            self._debug_reset_simulation,
+        )
+        self._add_action_button(
+            layout,
+            "Add simulated client",
+            "add_simulated_client",
+            self._debug_add_simulated_client,
         )
 
         layout.addWidget(self._section_label("Invite"))
@@ -400,7 +426,7 @@ class ControllerWindow(QMainWindow):
             button.style().polish(button)
 
     def _port_spike_controls_enabled(self) -> bool:
-        return self.portspike_checkbox.isChecked() and not self.auto_hold_mode
+        return self.portspike_checkbox.isChecked()
 
     @staticmethod
     def _apply_control(widget, enabled: bool, disabled_tooltip: str = "") -> None:
@@ -410,12 +436,6 @@ class ControllerWindow(QMainWindow):
     def _update_control_states(self) -> None:
         port_spike_on = self._port_spike_controls_enabled()
         automation_active = self.auto_spike_mode or self.desired_port_mode
-
-        self._apply_control(
-            self.portspike_checkbox,
-            not self.auto_hold_mode,
-            _TIP_AUTO_HOLD_BLOCKS_PORT_SPIKE,
-        )
 
         self._apply_control(
             self.rejoin_session_button,
@@ -489,45 +509,11 @@ class ControllerWindow(QMainWindow):
                     manual_disabled_tip,
                 )
 
-    def _update_auto_hold_button(self) -> None:
-        self.auto_hold_button.setProperty("autoHoldActive", self.auto_hold_mode)
-        self.auto_hold_button.style().unpolish(self.auto_hold_button)
-        self.auto_hold_button.style().polish(self.auto_hold_button)
-
-    def toggle_auto_hold(self) -> None:
-        self._set_auto_hold_mode(not self.auto_hold_mode, notify_clients=True)
-        self._set_last_pressed("auto_hold", "Toggle auto hold")
-
-    def _set_auto_hold_mode(self, enabled: bool, *, notify_clients: bool = True) -> None:
-        self.auto_hold_mode = enabled
-
-        if enabled:
-            self.portspike_checkbox.blockSignals(True)
-            self.portspike_checkbox.setChecked(False)
-            self.portspike_checkbox.blockSignals(False)
-            self.sio.emit("portspiking", False)
-            self.desired_port_mode_checkbox.setChecked(False)
-            self.auto_spike_mode_checkbox.setChecked(False)
-            self.desired_port_mode = False
-            self.auto_spike_mode = False
-            self.desired_port_entry.clear()
-            self.number_of_ships_entry.clear()
-
-        self._update_auto_hold_button()
-        self._update_control_states()
-
-        if notify_clients:
-            active_clients = self.client_manager.get_active_clients()
-            self.sio.emit("client_event", {"event": "auto_hold", "clients": active_clients})
-
     def change_region(self, *_args):
         self.sio.emit("region", self.region_combo.currentText())
 
     def set_port_spike(self, *_args):
-        if self.portspike_checkbox.isChecked():
-            if self.auto_hold_mode:
-                self._set_auto_hold_mode(False, notify_clients=False)
-        else:
+        if not self.portspike_checkbox.isChecked():
             self.desired_port_mode_checkbox.setChecked(False)
             self.auto_spike_mode_checkbox.setChecked(False)
             self.desired_port_mode = False
@@ -618,6 +604,7 @@ class ControllerWindow(QMainWindow):
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
             self.client_manager.reset_clients()
+            self.client_manager.update_biggest_match(self.biggest_match_label)
         if event == "forget_match":
             for client_name in active_clients:
                 client = self.client_manager.get_client(client_name)
@@ -634,18 +621,32 @@ class ControllerWindow(QMainWindow):
                             client.status_label.update_match_style()
             self.client_manager.update_biggest_match(self.biggest_match_label)
 
-    def start_hold_request(self):
-        active_clients = self.client_manager.get_active_clients()
-        client = None
-        for client_name in active_clients:
-            client = self.client_manager.get_client(client_name)
-            if client.holding:
-                print(f"{client.name} is already holding")
-                continue
-            print(f"{client.name} is not holding")
-            break
-        if client:
-            self.emit_client_event("hold_request", client.name)
+    def _debug_simulate_match(self) -> None:
+        size = self._sim_match_size_spin.value()
+        targets = self.client_manager.apply_debug_match_simulation(size)
+        added_sim = any(self.client_manager.get_client(name).simulated for name in targets)
+        if added_sim:
+            self.sort_client_list()
+        else:
+            for name in targets:
+                client = self.client_manager.get_client(name)
+                if client and client.status_label:
+                    client.status_label.setText(str(client.status))
+            self.client_manager.update_biggest_match(self.biggest_match_label)
+        self._set_last_pressed("simulate_match", f"Simulate match ({size})")
+        print(f"Simulated match size {size}: {', '.join(targets)}")
+
+    def _debug_reset_simulation(self) -> None:
+        self.client_manager.clear_debug_simulation()
+        self.sort_client_list()
+        self.client_manager.update_biggest_match(self.biggest_match_label)
+        self._set_last_pressed("reset_simulation", "Reset simulation")
+
+    def _debug_add_simulated_client(self) -> None:
+        name = self.client_manager.add_simulated_client()
+        self.sort_client_list()
+        self._set_last_pressed("add_simulated_client", f"Add simulated client ({name})")
+        print(f"Added simulated client {name}")
 
     def refresh_afk_status_column_visibility(self) -> None:
         from controller_ui.client_columns import refresh_afk_status_column_visibility
@@ -700,6 +701,11 @@ class ControllerWindow(QMainWindow):
 
         self.client_table.resizeColumnToContents(name_column_index)
         self.refresh_afk_status_column_visibility()
+        self._refresh_clients_count()
+
+    def _refresh_clients_count(self) -> None:
+        count = len(self.client_manager.clients)
+        self.clients_count_label.setText(f"({count})")
 
 
 # Backward-compatible alias

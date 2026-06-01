@@ -14,13 +14,14 @@ import tomlkit
 import logging
 
 import sot
-from client_handlers import ClientState, register_client_handlers
+from client_handlers import ClientSessionState, register_client_handlers
 from spiking_tool.client_update import maybe_update_client
 from spiking_tool.local_log import install_client_local_file_logging
 from spiking_tool.remote_log import install_client_remote_logging
 from spiking_tool.win_console import hide_console_window
 
-VERSION = "3.3.0"
+VERSION = "3.4.0"
+RECONNECT_DELAY_SECONDS = 3
 logger = logging.getLogger(__name__)
 
 
@@ -149,7 +150,7 @@ async def main():
     connection = sot.ConnectionManager()
     automation = sot.AutomationManager()
     anti_afk_manager = sot.AntiAfkManager(connection, screen=automation.screen)
-    client_state = ClientState()
+    client_state = ClientSessionState()
     register_client_handlers(
         sio,
         config["name"],
@@ -163,6 +164,12 @@ async def main():
 
     while True:
         try:
+            if sio.connected:
+                await sio.disconnect()
+        except Exception:
+            pass
+
+        try:
             await sio.connect(config["url"], auth=auth)
             await sio.wait()
         except socketio.exceptions.ConnectionError:
@@ -170,15 +177,21 @@ async def main():
                 logger.error("Unable to connect to server at %s", config["url"])
                 connection.stop()
                 os._exit(1)
-            logger.warning("Disconnected from server, retrying...")
-            await asyncio.sleep(1)
+            logger.warning(
+                "Disconnected from server (AFK and automation keep running); retrying in %ss",
+                RECONNECT_DELAY_SECONDS,
+            )
+            await asyncio.sleep(RECONNECT_DELAY_SECONDS)
         except Exception:
             if not client_state.connected_once:
                 logger.exception("Client failed before connecting to server")
                 connection.stop()
                 os._exit(1)
-            traceback.print_exc()
-            await asyncio.sleep(1)
+            logger.exception(
+                "Server connection error (local automation continues); retrying in %ss",
+                RECONNECT_DELAY_SECONDS,
+            )
+            await asyncio.sleep(RECONNECT_DELAY_SECONDS)
 
 
 def _running_frozen() -> bool:

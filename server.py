@@ -68,22 +68,22 @@ class SpikingServer:
         async def connect(sid, environ, auth):
             parsed = normalize_auth(auth, sid)
             if parsed["type"] == "controller":
-                self.clients[sid] = SpikingServer.Client(
-                    sid, parsed["name"], parsed["type"], parsed["name"]
-                )
+                self.clients[sid] = SpikingServer.Client(sid, parsed["name"], parsed["type"], parsed["name"])
                 self.controller = sid
             else:
                 existing = self._game_clients()
                 display_name = assign_display_name(existing, parsed["name"])
-                self.clients[sid] = SpikingServer.Client(
-                    sid, parsed["name"], parsed["type"], display_name
-                )
+                self.clients[sid] = SpikingServer.Client(sid, parsed["name"], parsed["type"], display_name)
                 await self.sio.emit(
                     "client_identity",
                     {"display_name": display_name},
                     to=sid,
                 )
             await self.sio.enter_room(sid, self.clients[sid].type)
+            if parsed["type"] == "client":
+                logger.info("Client connected: %s (auth name=%s)", display_name, parsed["name"])
+            elif parsed["type"] == "controller":
+                logger.info("Controller connected")
             await self._notify_controller_roster()
 
         @self.sio.event
@@ -91,7 +91,10 @@ class SpikingServer:
             if sid not in self.clients:
                 return
             client = self.clients[sid]
-            print(f"Client {client.display_name} disconnected")
+            if client.type == "client":
+                logger.info("Client disconnected: %s", client.display_name)
+            elif client.type == "controller":
+                logger.info("Controller disconnected")
             if sid == self.controller:
                 self.controller = None
             del self.clients[sid]
@@ -106,15 +109,17 @@ class SpikingServer:
         async def join(sid, data):
             game = f"{data['game_ip']}:{data['game_port']}"
             management = f"{data['management_ip']}:{data['management_port']}"
-            print(
-                f"Join from {self.clients[sid].name if sid in self.clients else sid}: "
-                f"game={game} management={management}"
+            client_name = self._display_name_for_sid(sid)
+            logger.info(
+                "Join from %s: game=%s management=%s",
+                client_name,
+                game,
+                management,
             )
-            client = self._display_name_for_sid(sid)
             await self.sio.emit(
                 "update_status",
                 data={
-                    "client": client,
+                    "client": client_name,
                     "status": data["management_port"],
                     "match": data,
                 },
@@ -224,9 +229,15 @@ class SpikingServer:
         @self.sio.event
         async def update_status(sid, data):
             client = self._display_name_for_sid(sid)
+            if isinstance(data, dict) and "status" in data:
+                payload = {"client": client, "status": data["status"]}
+                if data.get("match") is not None:
+                    payload["match"] = data["match"]
+            else:
+                payload = {"client": client, "status": data}
             await self.sio.emit(
                 "update_status",
-                data={"client": client, "status": data},
+                data=payload,
                 room=self.controller,
             )
 
@@ -236,15 +247,6 @@ class SpikingServer:
             await self.sio.emit(
                 "client_metric",
                 data={"client": client, **data},
-                room=self.controller,
-            )
-
-        @self.sio.event
-        async def hold_request_ack(sid, data):
-            client = self._display_name_for_sid(sid)
-            await self.sio.emit(
-                "hold_request_ack",
-                data={"client": client, "status": data},
                 room=self.controller,
             )
 

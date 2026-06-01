@@ -39,22 +39,6 @@ QPushButton:disabled {
     color: #7f849c;
     border: 1px solid #45475a;
 }
-QPushButton#autoHoldToggleButton[autoHoldActive="false"] {
-    background-color: #6c7086;
-    color: #1e1e2e;
-    border: none;
-}
-QPushButton#autoHoldToggleButton[autoHoldActive="false"]:hover:enabled {
-    background-color: #7f849c;
-}
-QPushButton#autoHoldToggleButton[autoHoldActive="true"] {
-    background-color: #a6e3a1;
-    color: #1e1e2e;
-    border: 2px solid #94e2d5;
-}
-QPushButton#autoHoldToggleButton[autoHoldActive="true"]:hover:enabled {
-    background-color: #b8f0c0;
-}
 QPushButton#entryConfirmButton {
     background-color: #a6e3a1;
     color: #1e1e2e;
@@ -134,6 +118,11 @@ QLabel#sectionTitle {
     font-size: 14px;
     font-weight: 600;
     color: #89b4fa;
+}
+QLabel#clientsCount {
+    font-size: 14px;
+    font-weight: 600;
+    color: #a6adc8;
 }
 QLabel#biggestMatch {
     background-color: #313244;

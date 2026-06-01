@@ -23,8 +23,10 @@ GAME_CLOSE_TIMEOUT_SECONDS = 30.0
 IMAGE_CONFIDENCE = 0.9
 SCREEN_POLL_SECONDS = 0.5
 # Bottom loading bar: nearly featureless black strip — template match false-positives on dark UI.
-LOADING_BAR_DARK_LUMINANCE = 28
-LOADING_BAR_DARK_RATIO = 0.75
+# Pixel darkness and region average use separate thresholds so dim night loads still match.
+LOADING_BAR_PIXEL_DARK_LUMINANCE = 65
+LOADING_BAR_MAX_AVG_LUMINANCE = 78
+LOADING_BAR_DARK_RATIO = 0.38
 LOADING_BAR_HEIGHT_FRACTION = 0.06
 LOADING_BAR_WIDTH_FRACTION = 0.7
 LOADING_BAR_BOTTOM_INSET_FRACTION = 0.02
@@ -431,7 +433,7 @@ class GameScreenMatcher:
             lum = (r + g + b) / 3
             lum_sum += lum
             total += 1
-            if lum <= LOADING_BAR_DARK_LUMINANCE:
+            if lum <= LOADING_BAR_PIXEL_DARK_LUMINANCE:
                 dark += 1
 
         if total == 0:
@@ -439,7 +441,10 @@ class GameScreenMatcher:
 
         dark_ratio = dark / total
         avg_lum = lum_sum / total
-        visible = dark_ratio >= LOADING_BAR_DARK_RATIO and avg_lum <= LOADING_BAR_DARK_LUMINANCE
+        visible = (
+            dark_ratio >= LOADING_BAR_DARK_RATIO
+            and avg_lum <= LOADING_BAR_MAX_AVG_LUMINANCE
+        )
         return visible, dark_ratio, avg_lum
 
     async def wait_for_screen(self, image_path: str, message: Optional[str] = None, confidence: float = IMAGE_CONFIDENCE) -> bool:

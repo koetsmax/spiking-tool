@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import traceback
 from typing import Any, Awaitable, Callable, Optional
@@ -14,13 +15,16 @@ from sot.AntiAfkManager import AntiAfkManager
 from sot.AutomationManager import AutomationManager
 from sot.ConnectionManager import ConnectionManager
 from sot.SessionLoadTracker import SessionLoadTracker
+from spiking_tool.client_session import ClientSessionState
+from spiking_tool.client_socket import safe_emit
+from spiking_tool.client_log import client_diagnostic_log
+from spiking_tool.logging_setup import format_log_timestamp
 from spiking_tool.remote_log import remote_log_bridge
 
+logger = logging.getLogger(__name__)
 
-class ClientState:
-    def __init__(self) -> None:
-        self.prev_port: Optional[int] = None
-        self.connected_once = False
+# Backward-compatible alias
+ClientState = ClientSessionState
 
 
 def register_client_handlers(
@@ -29,10 +33,10 @@ def register_client_handlers(
     connection: ConnectionManager,
     automation: AutomationManager,
     anti_afk_manager: AntiAfkManager,
-    state: Optional[ClientState] = None,
-) -> ClientState:
+    state: Optional[ClientSessionState] = None,
+) -> ClientSessionState:
     if state is None:
-        state = ClientState()
+        state = ClientSessionState()
 
     identity = {"display_name": client_name}
 
@@ -43,6 +47,64 @@ def register_client_handlers(
 
     def is_selected(data) -> bool:
         return identity["display_name"] in selected_client_names(data)
+
+    async def emit_client_status(status, *, match: Optional[dict[str, Any]] = None) -> None:
+        state.record_status(status, match=match)
+        if match is not None:
+            await safe_emit(sio, "update_status", {"status": status, "match": match})
+        else:
+            await safe_emit(sio, "update_status", status)
+
+    async def emit_afk_status(payload: dict) -> None:
+        state.record_afk_status(payload)
+        await safe_emit(sio, "afk_status", payload)
+
+    async def emit_afk_state(enabled: bool, preserve_status: bool = False) -> None:
+        await safe_emit(
+            sio,
+            "afk_state",
+            {"enabled": enabled, "preserve_status": preserve_status},
+        )
+
+    async def sync_session_to_server() -> None:
+        """Push remembered state after reconnecting to the server/controller."""
+        connection.region = sot.region_from_name(state.region_name)
+        connection.portspike = state.portspike
+        automation.ship = state.ship_type
+        await safe_emit(sio, "region", state.region_name)
+        await safe_emit(sio, "portspiking", state.portspike)
+        await safe_emit(
+            sio,
+            "change_ship",
+            {"client": identity["display_name"], "ship_type": state.ship_type},
+        )
+        await emit_client_status(
+            state.last_status,
+            match=state.last_match,
+        )
+        await emit_afk_state(anti_afk_manager.enabled, preserve_status=True)
+        if state.last_afk_status is not None:
+            await emit_afk_status(state.last_afk_status)
+        await safe_emit(sio, "client_metric", _pending_resolution_metric(automation))
+        remote_log_bridge.enqueue(
+            f"[{format_log_timestamp()}] Reconnected — restored session state to controller",
+            "INFO",
+        )
+
+    automation.set_status_emitter(emit_client_status)
+    anti_afk_manager.set_status_callback(emit_afk_status)
+    anti_afk_manager.set_state_callback(emit_afk_state)
+    anti_afk_manager.set_log_callback(
+        lambda message, level="INFO": client_diagnostic_log(f"[AFK] {message}", level)
+    )
+
+    session_load = SessionLoadTracker(
+        automation.screen,
+        should_stop=lambda: automation.stop,
+        log=lambda message, level="INFO": client_diagnostic_log(f"[Load] {message}", level),
+    )
+    automation.set_session_load_tracker(session_load)
+    anti_afk_manager.set_session_load_tracker(session_load)
 
     async def shutdown(_data=None) -> None:
         remote_log_bridge.enqueue("Shutdown requested from controller", "INFO")
@@ -61,33 +123,18 @@ def register_client_handlers(
         state.connected_once = True
         remote_log_bridge.attach(sio, identity["display_name"])
         remote_log_bridge.start_pump_task()
+        logger.info("Connected to server; restoring session state")
+        await sync_session_to_server()
         asyncio.create_task(automation.emit_resolution_metric(sio, force=True))
-        await sio.emit("afk_state", {"enabled": anti_afk_manager.enabled})
 
-    async def emit_afk_status(payload: dict) -> None:
-        await sio.emit("afk_status", payload)
-
-    async def emit_afk_state(enabled: bool, preserve_status: bool = False) -> None:
-        await sio.emit(
-            "afk_state",
-            {"enabled": enabled, "preserve_status": preserve_status},
+    @sio.event()
+    async def disconnect():
+        remote_log_bridge.enqueue(
+            f"[{format_log_timestamp()}] Disconnected from server — "
+            "local automation continues; will retry connection",
+            "WARNING",
         )
-
-    anti_afk_manager.set_status_callback(emit_afk_status)
-    anti_afk_manager.set_state_callback(emit_afk_state)
-    anti_afk_manager.set_log_callback(
-        lambda message, level="INFO": remote_log_bridge.enqueue(f"[AFK] {message}", level)
-    )
-
-    session_load = SessionLoadTracker(
-        automation.screen,
-        should_stop=lambda: automation.stop,
-        log=lambda message, level="INFO": remote_log_bridge.enqueue(f"[Load] {message}", level),
-    )
-    automation.set_session_load_tracker(session_load)
-
-    async def emit_client_status(status) -> None:
-        await sio.emit("update_status", data=status)
+        logger.warning("Disconnected from server; will retry connection")
 
     @sio.event()
     async def anti_afk(data):
@@ -110,11 +157,13 @@ def register_client_handlers(
     @sio.event()
     async def region(data):
         connection.region = sot.region_from_name(data)
+        state.record_region(data)
         print(f"Region set to {connection.region.city}")
 
     @sio.event()
     async def portspiking(data):
         connection.portspike = data
+        state.record_portspike(bool(data))
         if not data:
             connection.clear_disconnect()
         print(f"Portspiking set to {connection.portspike}")
@@ -122,6 +171,7 @@ def register_client_handlers(
     @sio.event()
     async def client_ship(data):
         if data["client"] == identity["display_name"]:
+            state.record_ship(data["ship_type"])
             await automation.set_ship(sio, data["ship_type"])
 
     @sio.event()
@@ -158,8 +208,12 @@ def register_client_handlers(
     @sio.event()
     async def reset(data):
         if is_selected(data):
+            session_load.cancel()
+            session_load.forget_match()
             if connection.portspike:
                 connection.begin_portspike_cycle()
+            else:
+                connection.forget_last_match()
             await automation.reset(sio, leave=True, portspiking=connection.portspike)
 
     @sio.event()
@@ -171,14 +225,6 @@ def register_client_handlers(
         await run_if_selected(data, lambda: automation.stop_functions(sio))
 
     @sio.event()
-    async def auto_hold(data):
-        await run_if_selected(data, lambda: automation.auto_hold(sio))
-
-    @sio.event()
-    async def hold_request(data):
-        await run_if_selected(data, lambda: automation.hold_request(sio))
-
-    @sio.event()
     async def invite_request(data):
         if data["clients"] == identity["display_name"]:
             print("Inviting", data["person_to_invite"])
@@ -188,6 +234,7 @@ def register_client_handlers(
     async def forget_match(data):
         if is_selected(data):
             state.prev_port = None
+            state.last_match = None
             session_load.cancel()
             session_load.forget_match()
             connection.forget_last_match()
@@ -200,9 +247,16 @@ def register_client_handlers(
 
     async def on_join(match_data):
         try:
+            game = f"{match_data['game_ip']}:{match_data['game_port']}"
+            management = f"{match_data['management_ip']}:{match_data['management_port']}"
+            remote_log_bridge.enqueue(
+                f"[{format_log_timestamp()}] Join match game={game} management={management}",
+                "INFO",
+            )
             state.prev_port = int(match_data["management_port"])
             session_load.record_match(state.prev_port)
-            await sio.emit("join", match_data)
+            state.record_status(match_data["management_port"], match=match_data)
+            await safe_emit(sio, "join", match_data)
             if session_load.reset_waiting:
                 await emit_client_status(session_load.waiting_to_load_status())
             elif session_load.monitoring and not session_load.loaded:
@@ -213,3 +267,11 @@ def register_client_handlers(
     connection.events.join += on_join  # pylint: disable=no-member
 
     return state
+
+
+def _pending_resolution_metric(automation: AutomationManager) -> dict[str, str]:
+    result = automation.screen.check_target_resolution()
+    return {
+        "metric": "resolution",
+        "state": automation.resolution_metric_state(result),
+    }
