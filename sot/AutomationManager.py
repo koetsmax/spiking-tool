@@ -13,7 +13,6 @@ class AutomationManager:
     def __init__(self):
         self.stop = False
         self.ship = "Brigantine"
-        self.holding = False
         self.screen = GameScreenMatcher(should_stop=lambda: self.stop)
         self._check_resolution_after_launch = False
         self._resolution_metric_state: str | None = None
@@ -314,27 +313,6 @@ class AutomationManager:
         await sio.emit("update_status", data="No longer stopping functions")
         await asyncio.sleep(2.5)
         await sio.emit("update_status", data="Pending...")
-
-    async def auto_hold(self, sio):
-        await sio.emit("update_status", data="(AH) Waiting for hold requests.")
-        if self.holding:
-            await sio.emit("update_status", data="(AH) Already holding.")
-            await sio.emit("hold_request_ack", data="Already holding.")
-            return
-
-        self.holding = False
-
-    async def hold_request(self, sio):
-        if self.holding:
-            await sio.emit("update_status", data="(AH) Already holding.")
-            await sio.emit("hold_request_ack", data="Already holding.")
-            return
-
-        await sio.emit("update_status", data="(AH) Request Received.")
-        await sio.emit("hold_request_ack", data="Request Received.")
-        self.holding = True
-        await asyncio.sleep(20)
-        await sio.emit("update_status", data="(AH) Holding a ship.")
 
     async def invite_request(self, sio, person_to_invite):
         await sio.emit("update_status", data=f"Inviting {person_to_invite}")

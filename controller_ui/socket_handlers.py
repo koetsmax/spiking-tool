@@ -25,9 +25,6 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
 
     @controller.sio.event()
     def client_disconnect(data):
-        for client_name, client in controller.client_manager.clients.copy().items():
-            if client_name not in data and client.holding:
-                print(f"{client_name} DISCONNECTED WHILE HOLDING A SHIP!!!!")
         controller.client_manager.sync_client_roster(data)
         controller.sort_client_list()
         controller.logging_tab.sync_client_list(controller._sorted_client_names())
@@ -77,10 +74,3 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
             preserve_status=bool(data.get("preserve_status")),
         )
         controller.refresh_afk_status_column_visibility()
-
-    @controller.sio.event()
-    def hold_request_ack(data):
-        client = controller.client_manager.get_client(data["client"])
-        if client:
-            client.holding = True
-            print(f"{client.name} is now holding")

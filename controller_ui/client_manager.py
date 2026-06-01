@@ -89,7 +89,6 @@ class Client:
         self.port: Optional[str] = None
         self.match: Optional["MatchDetails"] = None
         self.last_match: Optional["MatchDetails"] = None
-        self.holding = False
         self.afk_enabled = False
         self.afk_status = ""
         self.afk_toggle_button: Optional["QPushButton"] = None

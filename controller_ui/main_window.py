@@ -33,7 +33,6 @@ from spiking_tool.ship_sail_delay import compute_sail_delay
 from threadedsio import ThreadedSocketClient
 
 _TIP_PORT_SPIKE_REQUIRED = "Enable Port spike first."
-_TIP_AUTO_HOLD_BLOCKS_PORT_SPIKE = "Turn off Auto hold to use Port spike."
 _TIP_REJOIN_REQUIRES_PORT_SPIKE = "Rejoin session requires Port spike to be enabled."
 _TIP_AUTO_SPIKE_BLOCKS_MANUAL = (
     "Disabled while Auto spike mode is running — the controller resets and sails automatically."
@@ -64,7 +63,6 @@ class ControllerWindow(QMainWindow):
         self.log_store = ClientLogStore()
         self.desired_port_mode = False
         self.desired_port = None
-        self.auto_hold_mode = False
         self.auto_spike_mode = False
         self.number_of_ships = None
         self.person_to_invite = None
@@ -76,7 +74,6 @@ class ControllerWindow(QMainWindow):
         if hasattr(self.sio, "start"):
             self.sio.start()
         self._update_control_states()
-        self._update_auto_hold_button()
 
         self._afk_countdown_timer = QTimer(self)
         self._afk_countdown_timer.setInterval(1000)
@@ -285,15 +282,6 @@ class ControllerWindow(QMainWindow):
         )
         layout.addWidget(ships_row)
 
-        layout.addWidget(self._section_label("Auto hold"))
-        self.auto_hold_button = QPushButton("Toggle auto hold")
-        self.auto_hold_button.setObjectName("autoHoldToggleButton")
-        self.auto_hold_button.setProperty("autoHoldActive", False)
-        self.auto_hold_button.setProperty("lastPressed", False)
-        self.auto_hold_button.clicked.connect(self.toggle_auto_hold)
-        self._action_buttons["auto_hold"] = self.auto_hold_button
-        layout.addWidget(self.auto_hold_button)
-
         layout.addStretch()
         return tab
 
@@ -333,11 +321,6 @@ class ControllerWindow(QMainWindow):
             "Forget last match",
             "forget_match",
             lambda: self.emit_client_event("forget_match"),
-        )
-
-        layout.addWidget(self._section_label("Hold"))
-        self._add_action_button(
-            layout, "Simulate hold request", "hold_request", self.start_hold_request
         )
 
         layout.addWidget(self._section_label("Invite"))
@@ -409,7 +392,7 @@ class ControllerWindow(QMainWindow):
             button.style().polish(button)
 
     def _port_spike_controls_enabled(self) -> bool:
-        return self.portspike_checkbox.isChecked() and not self.auto_hold_mode
+        return self.portspike_checkbox.isChecked()
 
     @staticmethod
     def _apply_control(widget, enabled: bool, disabled_tooltip: str = "") -> None:
@@ -419,12 +402,6 @@ class ControllerWindow(QMainWindow):
     def _update_control_states(self) -> None:
         port_spike_on = self._port_spike_controls_enabled()
         automation_active = self.auto_spike_mode or self.desired_port_mode
-
-        self._apply_control(
-            self.portspike_checkbox,
-            not self.auto_hold_mode,
-            _TIP_AUTO_HOLD_BLOCKS_PORT_SPIKE,
-        )
 
         self._apply_control(
             self.rejoin_session_button,
@@ -498,45 +475,11 @@ class ControllerWindow(QMainWindow):
                     manual_disabled_tip,
                 )
 
-    def _update_auto_hold_button(self) -> None:
-        self.auto_hold_button.setProperty("autoHoldActive", self.auto_hold_mode)
-        self.auto_hold_button.style().unpolish(self.auto_hold_button)
-        self.auto_hold_button.style().polish(self.auto_hold_button)
-
-    def toggle_auto_hold(self) -> None:
-        self._set_auto_hold_mode(not self.auto_hold_mode, notify_clients=True)
-        self._set_last_pressed("auto_hold", "Toggle auto hold")
-
-    def _set_auto_hold_mode(self, enabled: bool, *, notify_clients: bool = True) -> None:
-        self.auto_hold_mode = enabled
-
-        if enabled:
-            self.portspike_checkbox.blockSignals(True)
-            self.portspike_checkbox.setChecked(False)
-            self.portspike_checkbox.blockSignals(False)
-            self.sio.emit("portspiking", False)
-            self.desired_port_mode_checkbox.setChecked(False)
-            self.auto_spike_mode_checkbox.setChecked(False)
-            self.desired_port_mode = False
-            self.auto_spike_mode = False
-            self.desired_port_entry.clear()
-            self.number_of_ships_entry.clear()
-
-        self._update_auto_hold_button()
-        self._update_control_states()
-
-        if notify_clients:
-            active_clients = self.client_manager.get_active_clients()
-            self.sio.emit("client_event", {"event": "auto_hold", "clients": active_clients})
-
     def change_region(self, *_args):
         self.sio.emit("region", self.region_combo.currentText())
 
     def set_port_spike(self, *_args):
-        if self.portspike_checkbox.isChecked():
-            if self.auto_hold_mode:
-                self._set_auto_hold_mode(False, notify_clients=False)
-        else:
+        if not self.portspike_checkbox.isChecked():
             self.desired_port_mode_checkbox.setChecked(False)
             self.auto_spike_mode_checkbox.setChecked(False)
             self.desired_port_mode = False
@@ -643,19 +586,6 @@ class ControllerWindow(QMainWindow):
                         if isinstance(client.status_label, ClickableStatusLabel):
                             client.status_label.update_match_style()
             self.client_manager.update_biggest_match(self.biggest_match_label)
-
-    def start_hold_request(self):
-        active_clients = self.client_manager.get_active_clients()
-        client = None
-        for client_name in active_clients:
-            client = self.client_manager.get_client(client_name)
-            if client.holding:
-                print(f"{client.name} is already holding")
-                continue
-            print(f"{client.name} is not holding")
-            break
-        if client:
-            self.emit_client_event("hold_request", client.name)
 
     def refresh_afk_status_column_visibility(self) -> None:
         from controller_ui.client_columns import refresh_afk_status_column_visibility

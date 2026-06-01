@@ -175,14 +175,6 @@ def register_client_handlers(
         await run_if_selected(data, lambda: automation.stop_functions(sio))
 
     @sio.event()
-    async def auto_hold(data):
-        await run_if_selected(data, lambda: automation.auto_hold(sio))
-
-    @sio.event()
-    async def hold_request(data):
-        await run_if_selected(data, lambda: automation.hold_request(sio))
-
-    @sio.event()
     async def invite_request(data):
         if data["clients"] == identity["display_name"]:
             print("Inviting", data["person_to_invite"])
