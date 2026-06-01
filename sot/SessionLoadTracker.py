@@ -101,11 +101,7 @@ class SessionLoadTracker:
     def _log_loading_sample(self) -> bool:
         visible, dark_ratio, avg_lum = self._loading_sample()
         status = self.waiting_to_load_status() if self._reset_waiting else self.loading_status()
-        self._write_log(
-            f"{status} — loading bar "
-            f"{'visible' if visible else 'not visible'} "
-            f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})"
-        )
+        self._write_log(f"{status} — loading bar " f"{'visible' if visible else 'not visible'} " f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})")
         return visible
 
     async def _poll_until_loaded(

@@ -68,16 +68,12 @@ class SpikingServer:
         async def connect(sid, environ, auth):
             parsed = normalize_auth(auth, sid)
             if parsed["type"] == "controller":
-                self.clients[sid] = SpikingServer.Client(
-                    sid, parsed["name"], parsed["type"], parsed["name"]
-                )
+                self.clients[sid] = SpikingServer.Client(sid, parsed["name"], parsed["type"], parsed["name"])
                 self.controller = sid
             else:
                 existing = self._game_clients()
                 display_name = assign_display_name(existing, parsed["name"])
-                self.clients[sid] = SpikingServer.Client(
-                    sid, parsed["name"], parsed["type"], display_name
-                )
+                self.clients[sid] = SpikingServer.Client(sid, parsed["name"], parsed["type"], display_name)
                 await self.sio.emit(
                     "client_identity",
                     {"display_name": display_name},

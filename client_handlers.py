@@ -76,9 +76,7 @@ def register_client_handlers(
 
     anti_afk_manager.set_status_callback(emit_afk_status)
     anti_afk_manager.set_state_callback(emit_afk_state)
-    anti_afk_manager.set_log_callback(
-        lambda message, level="INFO": remote_log_bridge.enqueue(f"[AFK] {message}", level)
-    )
+    anti_afk_manager.set_log_callback(lambda message, level="INFO": remote_log_bridge.enqueue(f"[AFK] {message}", level))
 
     session_load = SessionLoadTracker(
         automation.screen,
