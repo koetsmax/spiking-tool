@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 import time
 
 if TYPE_CHECKING:
-    from PySide6.QtWidgets import QLabel, QCheckBox, QComboBox, QPushButton, QWidget
+    from PySide6.QtWidgets import QLabel, QCheckBox, QComboBox, QPushButton, QTableWidget, QWidget
 
     from controller_ui.client_columns import MetricState
     from spiking_tool.match import MatchDetails
@@ -136,11 +136,13 @@ class ClientManager:
         port = client.match.management_port_digits
         return sum(1 for other in self.clients.values() if other.match is not None and other.match.management_port_digits == port)
 
-    def refresh_all_name_holos(self) -> None:
-        from controller_ui.client_columns import refresh_client_name_holo
+    def refresh_all_name_holos(self, table: "QTableWidget | None" = None) -> None:
+        from controller_ui.client_columns import refresh_client_name_holo, resize_name_column
 
         for client in self.clients.values():
             refresh_client_name_holo(client, self)
+        if table is not None:
+            resize_name_column(table)
 
     def apply_debug_match_simulation(self, size: int) -> list[str]:
         targets = self._clients_for_debug_match(size)
@@ -358,7 +360,7 @@ class ClientManager:
         if name in self.clients:
             del self.clients[name]
 
-    def update_biggest_match(self, label: QLabel) -> None:
+    def update_biggest_match(self, label: QLabel, *, table: "QTableWidget | None" = None) -> None:
         port_counts: dict[str, list[str]] = {}
         for client_name, client in self.clients.items():
             if client.match is None:
@@ -379,9 +381,9 @@ class ClientManager:
         else:
             label.setText("No matches found")
             self.biggest_match = None
-        self.refresh_all_name_holos()
+        self.refresh_all_name_holos(table)
 
-    def reset_clients(self) -> None:
+    def reset_clients(self, *, table: "QTableWidget | None" = None) -> None:
         from controller_ui.client_columns import ClickableStatusLabel
 
         for client in self.clients.values():
@@ -390,7 +392,7 @@ class ClientManager:
             client.last_match = None
             if client.status_label and isinstance(client.status_label, ClickableStatusLabel):
                 client.status_label.update_match_style()
-        self.refresh_all_name_holos()
+        self.refresh_all_name_holos(table)
 
     def get_biggest_match(self) -> Optional[int]:
         return self.biggest_match

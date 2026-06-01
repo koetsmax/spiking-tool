@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QFontMetrics, QGradient, QLinearGradient, QPainter, QPen
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel, QSizePolicy
 
 NameHoloTier = Literal["default", "gold", "titan"]
 
@@ -33,6 +33,7 @@ _TITAN_STOPS: tuple[tuple[float, str], ...] = (
 
 _SCROLL_PIXELS_PER_TICK = 0.75
 _TIMER_MS = 40
+_NAME_HORIZONTAL_PADDING = 12
 
 
 def holo_tier_for_group_size(group_size: int | None) -> NameHoloTier:
@@ -59,6 +60,30 @@ class HolographicNameLabel(QLabel):
         self._timer.setInterval(_TIMER_MS)
         self._timer.timeout.connect(self._tick_scroll)
         self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        self._apply_text_width_hint()
+
+    def _text_pixel_width(self) -> int:
+        text = self.text()
+        if not text:
+            return 0
+        return QFontMetrics(self.font()).horizontalAdvance(text)
+
+    def _apply_text_width_hint(self) -> None:
+        width = self._text_pixel_width() + _NAME_HORIZONTAL_PADDING
+        self.setMinimumWidth(width)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        super().setText(text)
+        self._apply_text_width_hint()
+
+    def sizeHint(self) -> QSize:  # noqa: N802
+        base = super().sizeHint()
+        width = max(base.width(), self._text_pixel_width() + _NAME_HORIZONTAL_PADDING)
+        return QSize(width, base.height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return self.sizeHint()
 
     def set_holo_tier(self, tier: NameHoloTier) -> None:
         if self._tier == tier:

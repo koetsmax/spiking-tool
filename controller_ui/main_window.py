@@ -603,8 +603,11 @@ class ControllerWindow(QMainWindow):
         active_clients = list(args) if args else self.client_manager.get_active_clients()
         self.sio.emit("client_event", {"event": event, "clients": active_clients})
         if event == "reset":
-            self.client_manager.reset_clients()
-            self.client_manager.update_biggest_match(self.biggest_match_label)
+            self.client_manager.reset_clients(table=self.client_table)
+            self.client_manager.update_biggest_match(
+                self.biggest_match_label,
+                table=self.client_table,
+            )
         if event == "forget_match":
             for client_name in active_clients:
                 client = self.client_manager.get_client(client_name)
@@ -619,7 +622,10 @@ class ControllerWindow(QMainWindow):
 
                         if isinstance(client.status_label, ClickableStatusLabel):
                             client.status_label.update_match_style()
-            self.client_manager.update_biggest_match(self.biggest_match_label)
+            self.client_manager.update_biggest_match(
+                self.biggest_match_label,
+                table=self.client_table,
+            )
 
     def _debug_simulate_match(self) -> None:
         size = self._sim_match_size_spin.value()
@@ -632,14 +638,20 @@ class ControllerWindow(QMainWindow):
                 client = self.client_manager.get_client(name)
                 if client and client.status_label:
                     client.status_label.setText(str(client.status))
-            self.client_manager.update_biggest_match(self.biggest_match_label)
+            self.client_manager.update_biggest_match(
+                self.biggest_match_label,
+                table=self.client_table,
+            )
         self._set_last_pressed("simulate_match", f"Simulate match ({size})")
         print(f"Simulated match size {size}: {', '.join(targets)}")
 
     def _debug_reset_simulation(self) -> None:
         self.client_manager.clear_debug_simulation()
         self.sort_client_list()
-        self.client_manager.update_biggest_match(self.biggest_match_label)
+        self.client_manager.update_biggest_match(
+            self.biggest_match_label,
+            table=self.client_table,
+        )
         self._set_last_pressed("reset_simulation", "Reset simulation")
 
     def _debug_add_simulated_client(self) -> None:
@@ -688,9 +700,6 @@ class ControllerWindow(QMainWindow):
 
     def create_client_list(self):
         self.client_table.setRowCount(0)
-        name_column_index = next(
-            i for i, col in enumerate(CLIENT_TABLE_COLUMNS) if col.column_id == "name"
-        )
 
         for client_name in self.client_manager.clients:
             client = self.client_manager.get_client(client_name)
@@ -699,7 +708,9 @@ class ControllerWindow(QMainWindow):
             client.column_widgets = {}
             populate_client_row(self.client_table, row, client, self)
 
-        self.client_table.resizeColumnToContents(name_column_index)
+        from controller_ui.client_columns import resize_name_column
+
+        resize_name_column(self.client_table)
         self.refresh_afk_status_column_visibility()
         self._refresh_clients_count()
 
