@@ -75,9 +75,19 @@ def _status_confirms_port(status, match) -> bool:
     return isinstance(status, int)
 
 
+_DEBUG_MATCH_PAYLOAD = {
+    "game_ip": "0.0.0.0",
+    "game_port": 30700,
+    "management_ip": "0.0.0.0",
+    "management_port": 40555,
+    "region": "US East - Washington DC (NY)",
+}
+
+
 class Client:
     def __init__(self, name: str) -> None:
         self.name = name
+        self.simulated = False
         self.ship_type = "Brigantine"
         self.status = "Pending..."
         self.metrics: dict[str, "MetricState"] = {}
@@ -105,6 +115,78 @@ class ClientManager:
 
     def add_client(self, name: str) -> None:
         self.clients[name] = Client(name)
+
+    def add_simulated_client(self) -> str:
+        index = 1
+        while True:
+            name = f"Sim-{index}"
+            if name not in self.clients:
+                break
+            index += 1
+        client = Client(name)
+        client.simulated = True
+        client.active_checkbox = None
+        self.clients[name] = client
+        return name
+
+    def match_group_size_for(self, client: Client) -> int | None:
+        if client.match is None:
+            return None
+        port = client.match.management_port_digits
+        return sum(
+            1
+            for other in self.clients.values()
+            if other.match is not None and other.match.management_port_digits == port
+        )
+
+    def refresh_all_name_holos(self) -> None:
+        from controller_ui.client_columns import refresh_client_name_holo
+
+        for client in self.clients.values():
+            refresh_client_name_holo(client, self)
+
+    def apply_debug_match_simulation(self, size: int) -> list[str]:
+        targets = self._clients_for_debug_match(size)
+        payload = _DEBUG_MATCH_PAYLOAD
+        status = payload["management_port"]
+        for name in list(self.clients.keys()):
+            if name == "Controller":
+                continue
+            if name in targets:
+                self.set_client_status(
+                    name,
+                    status,
+                    match=payload,
+                    selected_region=None,
+                )
+            elif self.clients[name].match is not None:
+                self.clients[name].match = None
+                self.clients[name].last_match = None
+                self.clients[name].port = None
+                self.clients[name].status = "Pending..."
+                if self.clients[name].status_label:
+                    self.clients[name].status_label.setText("Pending...")
+                    from controller_ui.client_columns import ClickableStatusLabel
+
+                    if isinstance(self.clients[name].status_label, ClickableStatusLabel):
+                        self.clients[name].status_label.update_match_style()
+        return targets
+
+    def clear_debug_simulation(self) -> None:
+        self.reset_clients()
+        for name in list(self.clients.keys()):
+            if self.clients[name].simulated:
+                self.remove_client(name)
+
+    def _clients_for_debug_match(self, size: int) -> list[str]:
+        names = [name for name in self.clients if name != "Controller"]
+        while len(names) < size:
+            names.append(self.add_simulated_client())
+
+        active = set(self.get_active_clients())
+        ordered: list[str] = [name for name in names if name in active]
+        ordered.extend(name for name in names if name not in active)
+        return ordered[:size]
 
     def get_active_clients(self) -> list[str]:
         return [name for name, client in self.clients.items() if client.active_checkbox and client.active_checkbox.isChecked()]
@@ -287,6 +369,7 @@ class ClientManager:
         else:
             label.setText("No matches found")
             self.biggest_match = None
+        self.refresh_all_name_holos()
 
     def reset_clients(self) -> None:
         from controller_ui.client_columns import ClickableStatusLabel
@@ -297,6 +380,7 @@ class ClientManager:
             client.last_match = None
             if client.status_label and isinstance(client.status_label, ClickableStatusLabel):
                 client.status_label.update_match_style()
+        self.refresh_all_name_holos()
 
     def get_biggest_match(self) -> Optional[int]:
         return self.biggest_match
@@ -309,7 +393,8 @@ class ClientManager:
     def sync_client_roster(self, display_names: list[str]) -> None:
         incoming = {name for name in display_names if name != "Controller"}
         for name in list(self.clients.keys()):
-            if name not in incoming:
+            client = self.clients[name]
+            if name not in incoming and not client.simulated:
                 self.remove_client(name)
         for name in incoming:
             if name not in self.clients:

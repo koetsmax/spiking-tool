@@ -21,8 +21,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from controller_ui.holo_name_label import HolographicNameLabel, holo_tier_for_group_size
+
 if TYPE_CHECKING:
-    from controller_ui.client_manager import Client
+    from controller_ui.client_manager import Client, ClientManager
     from controller_ui.main_window import ControllerWindow
 
 MetricState = Literal["unknown", "ok", "bad"]
@@ -118,6 +120,14 @@ class ActiveColumn(ClientColumnSpec):
         table.setCellWidget(row, column_index, window._centered_cell_widget(checkbox))
 
 
+def refresh_client_name_holo(client: "Client", manager: "ClientManager") -> None:
+    label = client.name_label
+    if not isinstance(label, HolographicNameLabel):
+        return
+    size = manager.match_group_size_for(client)
+    label.set_holo_tier(holo_tier_for_group_size(size))
+
+
 class NameColumn(ClientColumnSpec):
     def __init__(self) -> None:
         super().__init__("name", "Instance")
@@ -126,10 +136,15 @@ class NameColumn(ClientColumnSpec):
         return QHeaderView.ResizeMode.ResizeToContents
 
     def populate(self, table, row, column_index, client, window) -> None:
-        del window
-        item = QTableWidgetItem(client.name)
-        item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row, column_index, item)
+        label = HolographicNameLabel(client.name)
+        label.set_holo_tier("default")
+        client.name_label = label
+        refresh_client_name_holo(client, window.client_manager)
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(8, 0, 4, 0)
+        layout.addWidget(label, 1)
+        table.setCellWidget(row, column_index, container)
 
 
 class MetricIndicatorColumn(ClientColumnSpec):

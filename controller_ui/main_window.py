@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QTableWidget,
     QTabWidget,
@@ -323,6 +324,38 @@ class ControllerWindow(QMainWindow):
             lambda: self.emit_client_event("forget_match"),
         )
 
+        layout.addWidget(self._section_label("Match simulation"))
+        sim_size_row = QWidget()
+        sim_size_layout = QHBoxLayout(sim_size_row)
+        sim_size_layout.setContentsMargins(0, 0, 0, 0)
+        sim_size_layout.setSpacing(6)
+        sim_size_label = QLabel("Match size (1-6)")
+        self._sim_match_size_spin = QSpinBox()
+        self._sim_match_size_spin.setRange(1, 6)
+        self._sim_match_size_spin.setValue(4)
+        sim_size_layout.addWidget(sim_size_label)
+        sim_size_layout.addWidget(self._sim_match_size_spin, stretch=1)
+        layout.addWidget(sim_size_row)
+
+        self._add_action_button(
+            layout,
+            "Simulate match",
+            "simulate_match",
+            self._debug_simulate_match,
+        )
+        self._add_action_button(
+            layout,
+            "Reset simulation",
+            "reset_simulation",
+            self._debug_reset_simulation,
+        )
+        self._add_action_button(
+            layout,
+            "Add simulated client",
+            "add_simulated_client",
+            self._debug_add_simulated_client,
+        )
+
         layout.addWidget(self._section_label("Invite"))
         self.person_to_invite_entry = QLineEdit("person_to_invite")
         self.person_to_invite_entry.returnPressed.connect(self.set_person_to_invite)
@@ -586,6 +619,33 @@ class ControllerWindow(QMainWindow):
                         if isinstance(client.status_label, ClickableStatusLabel):
                             client.status_label.update_match_style()
             self.client_manager.update_biggest_match(self.biggest_match_label)
+
+    def _debug_simulate_match(self) -> None:
+        size = self._sim_match_size_spin.value()
+        targets = self.client_manager.apply_debug_match_simulation(size)
+        added_sim = any(self.client_manager.get_client(name).simulated for name in targets)
+        if added_sim:
+            self.sort_client_list()
+        else:
+            for name in targets:
+                client = self.client_manager.get_client(name)
+                if client and client.status_label:
+                    client.status_label.setText(str(client.status))
+            self.client_manager.update_biggest_match(self.biggest_match_label)
+        self._set_last_pressed("simulate_match", f"Simulate match ({size})")
+        print(f"Simulated match size {size}: {', '.join(targets)}")
+
+    def _debug_reset_simulation(self) -> None:
+        self.client_manager.clear_debug_simulation()
+        self.sort_client_list()
+        self.client_manager.update_biggest_match(self.biggest_match_label)
+        self._set_last_pressed("reset_simulation", "Reset simulation")
+
+    def _debug_add_simulated_client(self) -> None:
+        name = self.client_manager.add_simulated_client()
+        self.sort_client_list()
+        self._set_last_pressed("add_simulated_client", f"Add simulated client ({name})")
+        print(f"Added simulated client {name}")
 
     def refresh_afk_status_column_visibility(self) -> None:
         from controller_ui.client_columns import refresh_afk_status_column_visibility
