@@ -84,6 +84,10 @@ class SpikingServer:
                     to=sid,
                 )
             await self.sio.enter_room(sid, self.clients[sid].type)
+            if parsed["type"] == "client":
+                logger.info("Client connected: %s (auth name=%s)", display_name, parsed["name"])
+            elif parsed["type"] == "controller":
+                logger.info("Controller connected")
             await self._notify_controller_roster()
 
         @self.sio.event
@@ -91,7 +95,10 @@ class SpikingServer:
             if sid not in self.clients:
                 return
             client = self.clients[sid]
-            print(f"Client {client.display_name} disconnected")
+            if client.type == "client":
+                logger.info("Client disconnected: %s", client.display_name)
+            elif client.type == "controller":
+                logger.info("Controller disconnected")
             if sid == self.controller:
                 self.controller = None
             del self.clients[sid]
@@ -106,15 +113,17 @@ class SpikingServer:
         async def join(sid, data):
             game = f"{data['game_ip']}:{data['game_port']}"
             management = f"{data['management_ip']}:{data['management_port']}"
-            print(
-                f"Join from {self.clients[sid].name if sid in self.clients else sid}: "
-                f"game={game} management={management}"
+            client_name = self._display_name_for_sid(sid)
+            logger.info(
+                "Join from %s: game=%s management=%s",
+                client_name,
+                game,
+                management,
             )
-            client = self._display_name_for_sid(sid)
             await self.sio.emit(
                 "update_status",
                 data={
-                    "client": client,
+                    "client": client_name,
                     "status": data["management_port"],
                     "match": data,
                 },

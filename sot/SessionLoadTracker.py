@@ -113,12 +113,15 @@ class SessionLoadTracker:
         *,
         deadline: float | None = None,
         emit_status: Callable[[str], Awaitable[None]] | None = None,
+        should_continue: Callable[[], bool] | None = None,
     ) -> bool:
         seen_loading = False
         started = time.monotonic()
 
         while True:
             if self._should_stop():
+                return False
+            if should_continue is not None and not should_continue():
                 return False
             if deadline is not None and time.monotonic() >= deadline:
                 return False
@@ -151,6 +154,7 @@ class SessionLoadTracker:
         timeout: float = LOAD_WAIT_TIMEOUT_SECONDS,
         *,
         already_loaded_ok: bool = False,
+        should_continue: Callable[[], bool] | None = None,
     ) -> bool:
         if self._loaded:
             return True
@@ -161,7 +165,10 @@ class SessionLoadTracker:
 
         self._write_log("Waiting for loading bar to finish")
         deadline = time.monotonic() + timeout
-        if await self._poll_until_loaded(deadline=deadline):
+        if await self._poll_until_loaded(
+            deadline=deadline,
+            should_continue=should_continue,
+        ):
             self._loaded = True
             self._monitoring = False
             self._write_log(self.loaded_status())

@@ -105,6 +105,7 @@ class Client:
         self.afk_status_label: Optional[QLabel] = None
         self.afk_countdown_deadline: Optional[float] = None
         self.afk_countdown_payload: Optional["AfkStatusPayload"] = None
+        self.afk_last_payload: Optional["AfkStatusPayload"] = None
         self.afk_show_status = False
 
 
@@ -133,11 +134,7 @@ class ClientManager:
         if client.match is None:
             return None
         port = client.match.management_port_digits
-        return sum(
-            1
-            for other in self.clients.values()
-            if other.match is not None and other.match.management_port_digits == port
-        )
+        return sum(1 for other in self.clients.values() if other.match is not None and other.match.management_port_digits == port)
 
     def refresh_all_name_holos(self) -> None:
         from controller_ui.client_columns import refresh_client_name_holo
@@ -261,6 +258,7 @@ class ClientManager:
     def _render_client_afk_status(self, client: Client, *, remaining: int | None = None) -> None:
         if not client.afk_status_label:
             return
+        payload = client.afk_countdown_payload or client.afk_last_payload
         if client.afk_countdown_payload and client.afk_countdown_payload.type == "countdown":
             if remaining is None and client.afk_countdown_deadline is not None:
                 remaining = int(client.afk_countdown_deadline - time.monotonic())
@@ -268,6 +266,8 @@ class ClientManager:
         else:
             text = client.afk_status
         client.afk_status_label.setText(text)
+        tooltip = payload.tooltip() if payload else ""
+        client.afk_status_label.setToolTip(tooltip)
 
     def set_client_afk_status(self, name: str, status) -> None:
         from spiking_tool.afk_status import AfkStatusPayload
@@ -282,11 +282,13 @@ class ClientManager:
 
         if payload.type == "clear":
             self._clear_client_afk_countdown(client)
+            client.afk_last_payload = None
             client.afk_status = ""
             client.afk_show_status = False
             self._render_client_afk_status(client)
             return
 
+        client.afk_last_payload = payload
         if payload.type == "countdown":
             client.afk_countdown_payload = payload
             client.afk_countdown_deadline = time.monotonic() + payload.seconds
@@ -330,16 +332,20 @@ class ClientManager:
         if enabled:
             client.afk_show_status = False
             self._clear_client_afk_countdown(client)
+            client.afk_last_payload = None
             client.afk_status = ""
             if client.afk_status_label:
                 client.afk_status_label.setText("")
+                client.afk_status_label.setToolTip("")
                 client.afk_status_label.setStyleSheet("")
         elif not preserve_status:
             client.afk_show_status = False
             self._clear_client_afk_countdown(client)
+            client.afk_last_payload = None
             client.afk_status = ""
             if client.afk_status_label:
                 client.afk_status_label.setText("")
+                client.afk_status_label.setToolTip("")
                 client.afk_status_label.setStyleSheet("")
         if client.afk_toggle_button:
             style_afk_toggle_button(client.afk_toggle_button, enabled)

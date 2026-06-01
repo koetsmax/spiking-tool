@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller_ui.holo_name_label import HolographicNameLabel, holo_tier_for_group_size
+from spiking_tool.afk_status import AFK_PHASE_DESCRIPTIONS, AFK_PHASE_ENABLED
 
 if TYPE_CHECKING:
     from controller_ui.client_manager import Client, ClientManager
@@ -245,10 +246,21 @@ class ClickableStatusLabel(QLabel):
         super().mousePressEvent(event)
 
 
+_AFK_OFF_TOOLTIP = (
+    "Turn on Anti-AFK for this client. When on, it automatically disconnects and "
+    "rejoins on a timer to avoid idle kick."
+)
+_AFK_ON_TOOLTIP = (
+    "Anti-AFK is on for this client. Hover the AFK status column for what it is doing "
+    "right now (disconnect, wait for error dialog, rejoin, load in, idle, etc.).\n\n"
+    + AFK_PHASE_DESCRIPTIONS[AFK_PHASE_ENABLED]
+)
+
+
 def style_afk_toggle_button(button: QPushButton, enabled: bool) -> None:
     button.setObjectName("clientAfkOnButton" if enabled else "clientKillButton")
     button.setText("On" if enabled else "Off")
-    button.setToolTip("Anti-AFK enabled" if enabled else "Anti-AFK disabled")
+    button.setToolTip(_AFK_ON_TOOLTIP if enabled else _AFK_OFF_TOOLTIP)
     button.style().unpolish(button)
     button.style().polish(button)
 
@@ -280,6 +292,11 @@ class AfkToggleColumn(ClientColumnSpec):
 
 
 class AfkStatusColumn(ClientColumnSpec):
+    _HEADER_TOOLTIP = (
+        "Current Anti-AFK step for this client. Hover a cell for a full explanation "
+        "(e.g. dropping connection, waiting for the error dialog, rejoining, loading in)."
+    )
+
     def __init__(self) -> None:
         super().__init__("afk_status", "AFK status")
 
@@ -291,6 +308,8 @@ class AfkStatusColumn(ClientColumnSpec):
         label = QLabel(client.afk_status)
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        if client.afk_last_payload:
+            label.setToolTip(client.afk_last_payload.tooltip())
         client.afk_status_label = label
         container = QWidget()
         layout = QHBoxLayout(container)
@@ -387,7 +406,11 @@ def refresh_afk_status_column_visibility(
 
 def configure_client_table(table: QTableWidget) -> None:
     table.setColumnCount(len(CLIENT_TABLE_COLUMNS))
-    table.setHorizontalHeaderLabels([col.header for col in CLIENT_TABLE_COLUMNS])
+    for index, spec in enumerate(CLIENT_TABLE_COLUMNS):
+        header_item = QTableWidgetItem(spec.header)
+        if isinstance(spec, AfkStatusColumn):
+            header_item.setToolTip(AfkStatusColumn._HEADER_TOOLTIP)
+        table.setHorizontalHeaderItem(index, header_item)
     header = table.horizontalHeader()
     header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
     for index, spec in enumerate(CLIENT_TABLE_COLUMNS):

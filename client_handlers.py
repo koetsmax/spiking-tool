@@ -14,6 +14,7 @@ from sot.AntiAfkManager import AntiAfkManager
 from sot.AutomationManager import AutomationManager
 from sot.ConnectionManager import ConnectionManager
 from sot.SessionLoadTracker import SessionLoadTracker
+from spiking_tool.logging_setup import format_log_timestamp
 from spiking_tool.remote_log import remote_log_bridge
 
 
@@ -85,6 +86,7 @@ def register_client_handlers(
         log=lambda message, level="INFO": remote_log_bridge.enqueue(f"[Load] {message}", level),
     )
     automation.set_session_load_tracker(session_load)
+    anti_afk_manager.set_session_load_tracker(session_load)
 
     async def emit_client_status(status) -> None:
         await sio.emit("update_status", data=status)
@@ -196,6 +198,12 @@ def register_client_handlers(
 
     async def on_join(match_data):
         try:
+            game = f"{match_data['game_ip']}:{match_data['game_port']}"
+            management = f"{match_data['management_ip']}:{match_data['management_port']}"
+            remote_log_bridge.enqueue(
+                f"[{format_log_timestamp()}] Join match game={game} management={management}",
+                "INFO",
+            )
             state.prev_port = int(match_data["management_port"])
             session_load.record_match(state.prev_port)
             await sio.emit("join", match_data)

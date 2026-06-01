@@ -10,9 +10,24 @@ from typing import Awaitable, Callable, Optional
 
 import keyboard
 
-from spiking_tool.afk_status import AfkStatusPayload, CountdownMode, format_elapsed
+from spiking_tool.afk_status import (
+    AFK_PHASE_ACTIVITY,
+    AFK_PHASE_DISCONNECT,
+    AFK_PHASE_ENABLED,
+    AFK_PHASE_ERROR,
+    AFK_PHASE_HAZELNUT_WAIT,
+    AFK_PHASE_IDLE,
+    AFK_PHASE_LOAD_IN,
+    AFK_PHASE_LOADED,
+    AFK_PHASE_POST_DISCONNECT_WAIT,
+    AFK_PHASE_REJOIN_WAIT,
+    AfkStatusPayload,
+    CountdownMode,
+    format_elapsed,
+)
 
 from .ConnectionManager import ConnectionManager
+from .SessionLoadTracker import SessionLoadTracker
 from .ui_automation import GameScreenMatcher, SCREEN_POLL_SECONDS
 
 logger = logging.getLogger(__name__)
@@ -23,8 +38,6 @@ StateCallback = Callable[[bool, bool], Awaitable[None]]
 
 DISCONNECT_SECONDS = 45
 POST_DISCONNECT_WAIT_SECONDS = 8 * 60
-HAZELNUT_WAIT_SECONDS = 20
-REJOIN_WAIT_SECONDS = 45
 HAZELNUT_IMAGE = "img/portspike_connected.png"
 REJOIN_IMAGE = "img/rejoin_prompt.png"
 KEY_PRESS_MULTIPLIER_RANGE = (0.25, 1.0)
@@ -42,6 +55,7 @@ class AntiAfkManager:
     ) -> None:
         self._connection = connection
         self._screen = screen or GameScreenMatcher()
+        self._session_load: Optional[SessionLoadTracker] = None
         self._enabled = False
         self._task: Optional[asyncio.Task] = None
         self._emit_status: Optional[StatusCallback] = None
@@ -62,6 +76,9 @@ class AntiAfkManager:
 
     def set_state_callback(self, callback: StateCallback) -> None:
         self._state_callback = callback
+
+    def set_session_load_tracker(self, tracker: SessionLoadTracker) -> None:
+        self._session_load = tracker
 
     async def _notify_state(self, enabled: bool, *, preserve_status: bool = False) -> None:
         if self._state_callback:
@@ -88,7 +105,14 @@ class AntiAfkManager:
         self._write_log("Anti-AFK enabled")
         self._task = asyncio.create_task(self._run_loop())
         await self._notify_state(True)
-        await self._emit(AfkStatusPayload(type="text", message="Enabled"), log=False)
+        await self._emit(
+            AfkStatusPayload(
+                type="text",
+                message="Running — starting cycle",
+                phase=AFK_PHASE_ENABLED,
+            ),
+            log=False,
+        )
 
     async def stop(self) -> None:
         if not self._enabled:
@@ -154,7 +178,10 @@ class AntiAfkManager:
 
     async def _emit_error(self, message: str) -> None:
         self._write_log(f"Error: {message}", "ERROR")
-        await self._emit(AfkStatusPayload(type="error", message=message), log=False)
+        await self._emit(
+            AfkStatusPayload(type="error", message=message, phase=AFK_PHASE_ERROR),
+            log=False,
+        )
 
     async def _focus_game(self) -> bool:
         self._write_log("Focusing SoT window")
@@ -171,6 +198,7 @@ class AntiAfkManager:
         prefix: str,
         mode: CountdownMode = "seconds",
         log_message: str | None = None,
+        phase: str | None = None,
     ) -> None:
         seconds = max(0, int(total_seconds))
         self._write_log(log_message or f"{prefix} {seconds}")
@@ -180,6 +208,7 @@ class AntiAfkManager:
                 prefix=prefix,
                 seconds=seconds,
                 mode=mode,
+                phase=phase,
             ),
             log=False,
         )
@@ -196,12 +225,14 @@ class AntiAfkManager:
         prefix: str,
         mode: CountdownMode = "seconds",
         log_message: str | None = None,
+        phase: str | None = None,
     ) -> None:
         await self._sleep_with_countdown(
             total_seconds,
             prefix=prefix,
             mode=mode,
             log_message=log_message,
+            phase=phase,
         )
 
     async def _press_key(self, key: str, *, base_ms: float = KEY_HOLD_BASE_MS) -> bool:
@@ -221,14 +252,24 @@ class AntiAfkManager:
         duration = multiplier * SLEEP_BASE_SECONDS
         await self._sleep_with_countdown(
             duration,
-            prefix="Sleep",
+            prefix="Idle before next cycle",
             mode="compact",
             log_message=f"Sleeping {int(duration)} seconds before next cycle",
+            phase=AFK_PHASE_IDLE,
         )
 
-    async def _wait_for_screen(self, image_path: str, message: str) -> bool:
+    async def _wait_for_screen(
+        self,
+        image_path: str,
+        message: str,
+        *,
+        phase: str | None = None,
+    ) -> bool:
         self._write_log(f"Waiting for screen: {image_path}")
-        await self._emit(AfkStatusPayload(type="text", message=message), log=False)
+        await self._emit(
+            AfkStatusPayload(type="text", message=message, phase=phase),
+            log=False,
+        )
         while self._enabled:
             if self._screen.screen_visible(image_path):
                 self._write_log(f"Screen matched: {image_path}")
@@ -242,9 +283,10 @@ class AntiAfkManager:
         try:
             await self._countdown_sleep(
                 DISCONNECT_SECONDS,
-                prefix="Disconnect",
+                prefix="Dropping connection",
                 mode="compact",
                 log_message=f"Disconnect active for {DISCONNECT_SECONDS}s",
+                phase=AFK_PHASE_DISCONNECT,
             )
         finally:
             self._connection.force_disconnect = False
@@ -253,39 +295,67 @@ class AntiAfkManager:
     async def _wait_after_disconnect(self) -> None:
         await self._countdown_sleep(
             POST_DISCONNECT_WAIT_SECONDS,
-            prefix="Wait",
+            prefix="Waiting for error dialog",
             mode="compact",
             log_message=f"Sleeping {POST_DISCONNECT_WAIT_SECONDS // 60} minutes before hazelnut prompt",
+            phase=AFK_PHASE_POST_DISCONNECT_WAIT,
         )
 
     async def _accept_hazelnut(self) -> bool:
         self._write_log("Accepting hazelnut error")
-        if not await self._wait_for_screen(HAZELNUT_IMAGE, "Hazelnut"):
+        if not await self._wait_for_screen(
+            HAZELNUT_IMAGE,
+            "Watching for error dialog",
+            phase=AFK_PHASE_HAZELNUT_WAIT,
+        ):
             await self._fatal_error("Hazelnut screen not found")
             return False
         if not await self._press_key("enter", base_ms=1000):
             return False
-        await self._sleep_with_countdown(
-            HAZELNUT_WAIT_SECONDS,
-            prefix="Wait",
-            mode="compact",
-            log_message=f"Sleeping {HAZELNUT_WAIT_SECONDS}s after hazelnut prompt",
-        )
         return True
 
     async def _accept_rejoin(self) -> bool:
-        self._write_log("Accepting rejoin prompt")
-        if not await self._wait_for_screen(REJOIN_IMAGE, "Rejoin"):
+        self._write_log("Waiting for rejoin prompt after hazelnut")
+        if not await self._wait_for_screen(
+            REJOIN_IMAGE,
+            "Watching for rejoin prompt",
+            phase=AFK_PHASE_REJOIN_WAIT,
+        ):
             await self._fatal_error("Rejoin prompt not found")
             return False
         if not await self._press_key("enter", base_ms=1000):
             return False
-        await self._sleep_with_countdown(
-            REJOIN_WAIT_SECONDS,
-            prefix="Wait",
-            mode="compact",
-            log_message=f"Sleeping {REJOIN_WAIT_SECONDS}s after rejoin prompt",
+        return await self._wait_for_load_in()
+
+    async def _wait_for_load_in(self) -> bool:
+        self._write_log("Waiting for load-in (bottom loading bar)")
+        await self._emit(
+            AfkStatusPayload(
+                type="text",
+                message="Loading into world",
+                phase=AFK_PHASE_LOAD_IN,
+            ),
+            log=False,
         )
+        if self._session_load is None:
+            await self._fatal_error("Load tracker not configured")
+            return False
+        self._session_load.cancel()
+        if not await self._session_load.wait_until_loaded(
+            should_continue=lambda: self._enabled,
+        ):
+            if self._enabled:
+                await self._fatal_error("Timed out waiting to load in")
+            return False
+        await self._emit(
+            AfkStatusPayload(
+                type="text",
+                message="Back in world",
+                phase=AFK_PHASE_LOADED,
+            ),
+            log=False,
+        )
+        self._write_log("Load-in complete (loading bar gone)")
         return True
 
     async def _run_full_cycle(self) -> bool:
@@ -301,6 +371,14 @@ class AntiAfkManager:
     async def _run_loop(self) -> None:
         try:
             while self._enabled:
+                await self._emit(
+                    AfkStatusPayload(
+                        type="text",
+                        message="Pressing Space",
+                        phase=AFK_PHASE_ACTIVITY,
+                    ),
+                    log=False,
+                )
                 if not await self._press_key("space"):
                     break
                 if not await self._run_full_cycle():
@@ -317,7 +395,11 @@ class AntiAfkManager:
             self._enabled = False
             self._connection.force_disconnect = False
             await self._emit(
-                AfkStatusPayload(type="error", message="Anti-AFK loop failed"),
+                AfkStatusPayload(
+                    type="error",
+                    message="Anti-AFK loop failed",
+                    phase=AFK_PHASE_ERROR,
+                ),
                 log=False,
             )
             self._log_runtime_summary(ended_label="Failed at", level="ERROR")

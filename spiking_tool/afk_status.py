@@ -10,6 +10,68 @@ CountdownMode = Literal["seconds", "duration", "compact"]
 
 SLEEP_STATUS_PREFIX = "Sleeping for"
 
+# Machine-readable phases for tooltips and logging.
+AFK_PHASE_ENABLED = "enabled"
+AFK_PHASE_ACTIVITY = "activity"
+AFK_PHASE_DISCONNECT = "disconnect"
+AFK_PHASE_POST_DISCONNECT_WAIT = "post_disconnect_wait"
+AFK_PHASE_HAZELNUT_WAIT = "hazelnut_wait"
+AFK_PHASE_REJOIN_WAIT = "rejoin_wait"
+AFK_PHASE_LOAD_IN = "load_in"
+AFK_PHASE_LOADED = "loaded"
+AFK_PHASE_IDLE = "idle"
+AFK_PHASE_ERROR = "error"
+
+AFK_PHASE_DESCRIPTIONS: dict[str, str] = {
+    AFK_PHASE_ENABLED: (
+        "Anti-AFK is on. Each cycle sends Space, drops your connection for 45 seconds, "
+        "waits for the connection error dialog, rejoins, waits for the world to load, "
+        "then idles before repeating."
+    ),
+    AFK_PHASE_ACTIVITY: "Pressing Space to register activity before the disconnect cycle.",
+    AFK_PHASE_DISCONNECT: (
+        "Blocking game network traffic for 45 seconds to force a disconnect. "
+        "You will disconnect from the server during this step."
+    ),
+    AFK_PHASE_POST_DISCONNECT_WAIT: (
+        "Waiting about 8 minutes for the 'could not connect' (beard) error dialog. "
+        "You have 10 minutes to reconnect after a forced disconnect."
+    ),
+    AFK_PHASE_HAZELNUT_WAIT: (
+        "Watching the screen for the connection error dialog. "
+        "Will press Enter automatically when it appears."
+    ),
+    AFK_PHASE_REJOIN_WAIT: (
+        "Watching for the 'rejoin your session' prompt after accepting the error. "
+        "Will press Enter as soon as it is visible."
+    ),
+    AFK_PHASE_LOAD_IN: (
+        "Waiting for the bottom loading bar to appear and disappear, meaning the world "
+        "has finished loading you back in."
+    ),
+    AFK_PHASE_LOADED: "Load-in finished. About to start the idle period before the next cycle.",
+    AFK_PHASE_IDLE: (
+        "Random wait (about 30 seconds to 2 minutes) before the next AFK cycle. "
+        "No disconnect is active during this time."
+    ),
+    AFK_PHASE_ERROR: "Anti-AFK stopped because something failed. See client logs for details.",
+}
+
+_COUNTDOWN_PREFIX_PHASE: dict[str, str] = {
+    "Dropping connection": AFK_PHASE_DISCONNECT,
+    "Waiting for error dialog": AFK_PHASE_POST_DISCONNECT_WAIT,
+    "Idle before next cycle": AFK_PHASE_IDLE,
+}
+
+_TEXT_MESSAGE_PHASE: dict[str, str] = {
+    "Running — starting cycle": AFK_PHASE_ENABLED,
+    "Pressing Space": AFK_PHASE_ACTIVITY,
+    "Watching for error dialog": AFK_PHASE_HAZELNUT_WAIT,
+    "Watching for rejoin prompt": AFK_PHASE_REJOIN_WAIT,
+    "Loading into world": AFK_PHASE_LOAD_IN,
+    "Back in world": AFK_PHASE_LOADED,
+}
+
 
 def format_duration(seconds: int) -> str:
     sign = "-" if seconds < 0 else ""
@@ -67,6 +129,28 @@ def format_countdown_display(
     return f"{cycle_part}{label} {remaining_seconds} {secs_label}"
 
 
+def afk_status_tooltip(payload: "AfkStatusPayload") -> str:
+    if payload.phase:
+        description = AFK_PHASE_DESCRIPTIONS.get(payload.phase)
+        if description:
+            return description
+    if payload.type == "countdown":
+        phase = _COUNTDOWN_PREFIX_PHASE.get(payload.prefix.strip())
+        if phase:
+            return AFK_PHASE_DESCRIPTIONS[phase]
+    if payload.type == "text":
+        phase = _TEXT_MESSAGE_PHASE.get(payload.message.strip())
+        if phase:
+            return AFK_PHASE_DESCRIPTIONS[phase]
+    if payload.type == "error":
+        detail = payload.message.removeprefix("Error:").strip()
+        base = AFK_PHASE_DESCRIPTIONS[AFK_PHASE_ERROR]
+        if detail:
+            return f"{base} ({detail})"
+        return base
+    return ""
+
+
 @dataclass(frozen=True)
 class AfkStatusPayload:
     type: AfkStatusType
@@ -75,6 +159,7 @@ class AfkStatusPayload:
     seconds: int = 0
     mode: CountdownMode = "seconds"
     cycle: int | None = None
+    phase: str | None = None
 
     def to_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {"type": self.type}
@@ -86,6 +171,8 @@ class AfkStatusPayload:
             payload["message"] = self.message
         if self.cycle is not None:
             payload["cycle"] = self.cycle
+        if self.phase is not None:
+            payload["phase"] = self.phase
         return payload
 
     @classmethod
@@ -99,6 +186,8 @@ class AfkStatusPayload:
         status_type = data.get("type", "text")
         if status_type == "clear":
             return cls(type="clear")
+        phase = data.get("phase")
+        phase_str = str(phase) if phase is not None else None
         if status_type == "countdown":
             cycle = data.get("cycle")
             return cls(
@@ -107,6 +196,7 @@ class AfkStatusPayload:
                 seconds=int(data.get("seconds", 0)),
                 mode=data.get("mode", "seconds"),
                 cycle=int(cycle) if cycle is not None else None,
+                phase=phase_str,
             )
         if status_type == "error":
             cycle = data.get("cycle")
@@ -114,12 +204,14 @@ class AfkStatusPayload:
                 type="error",
                 message=str(data.get("message", "Unknown AFK error")),
                 cycle=int(cycle) if cycle is not None else None,
+                phase=phase_str or AFK_PHASE_ERROR,
             )
         cycle = data.get("cycle")
         return cls(
             type="text",
             message=str(data.get("message", "")),
             cycle=int(cycle) if cycle is not None else None,
+            phase=phase_str,
         )
 
     def _cycle_prefix(self) -> str:
@@ -140,6 +232,9 @@ class AfkStatusPayload:
             body = self.message if self.message.startswith("Error:") else f"Error: {self.message}"
             return f"{self._cycle_prefix()}{body}"
         return f"{self._cycle_prefix()}{self.message}"
+
+    def tooltip(self) -> str:
+        return afk_status_tooltip(self)
 
     def log_text(self, *, remaining_seconds: int | None = None) -> str:
         return self.display_text(remaining_seconds=remaining_seconds)

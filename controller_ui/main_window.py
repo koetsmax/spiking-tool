@@ -62,6 +62,7 @@ class ControllerWindow(QMainWindow):
         )
         self.client_manager = ClientManager()
         self.log_store = ClientLogStore()
+        self._connected_client_roster: set[str] = set()
         self.desired_port_mode = False
         self.desired_port = None
         self.auto_spike_mode = False
