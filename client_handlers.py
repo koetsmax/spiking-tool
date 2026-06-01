@@ -104,7 +104,6 @@ def register_client_handlers(
         log=lambda message, level="INFO": client_diagnostic_log(f"[Load] {message}", level),
     )
     automation.set_session_load_tracker(session_load)
-    anti_afk_manager.set_session_load_tracker(session_load)
 
     async def shutdown(_data=None) -> None:
         remote_log_bridge.enqueue("Shutdown requested from controller", "INFO")
