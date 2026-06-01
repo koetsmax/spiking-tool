@@ -21,14 +21,12 @@ from spiking_tool.afk_status import (
     AFK_PHASE_LOADED,
     AFK_PHASE_POST_DISCONNECT_WAIT,
     AFK_PHASE_REJOIN_WAIT,
-    AFK_PHASE_RESUME_LOADING,
     AfkStatusPayload,
     CountdownMode,
     format_elapsed,
 )
 
 from .ConnectionManager import ConnectionManager
-from .SessionLoadTracker import SessionLoadTracker
 from .ui_automation import GameScreenMatcher, SCREEN_POLL_SECONDS
 
 logger = logging.getLogger(__name__)
@@ -39,6 +37,7 @@ StateCallback = Callable[[bool, bool], Awaitable[None]]
 
 DISCONNECT_SECONDS = 45
 POST_DISCONNECT_WAIT_SECONDS = 8 * 60
+LOAD_IN_WAIT_SECONDS = 45
 HAZELNUT_IMAGE = "img/portspike_connected.png"
 REJOIN_IMAGE = "img/rejoin_prompt.png"
 KEY_PRESS_MULTIPLIER_RANGE = (0.25, 1.0)
@@ -47,7 +46,7 @@ SLEEP_BASE_SECONDS = 120
 WINDOW_FOCUS_DELAY_SECONDS = 0.2
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-AfkScreenState = Literal["rejoin", "hazelnut", "loading", "in_game"]
+AfkScreenState = Literal["rejoin", "hazelnut", "in_game"]
 
 
 class AntiAfkManager:
@@ -58,7 +57,6 @@ class AntiAfkManager:
     ) -> None:
         self._connection = connection
         self._screen = screen or GameScreenMatcher()
-        self._session_load: Optional[SessionLoadTracker] = None
         self._enabled = False
         self._task: Optional[asyncio.Task] = None
         self._emit_status: Optional[StatusCallback] = None
@@ -79,9 +77,6 @@ class AntiAfkManager:
 
     def set_state_callback(self, callback: StateCallback) -> None:
         self._state_callback = callback
-
-    def set_session_load_tracker(self, tracker: SessionLoadTracker) -> None:
-        self._session_load = tracker
 
     async def _notify_state(self, enabled: bool, *, preserve_status: bool = False) -> None:
         if self._state_callback:
@@ -311,15 +306,11 @@ class AntiAfkManager:
         )
 
     def _detect_afk_screen_state(self) -> AfkScreenState:
-        """Infer where we are in the AFK flow from the current game screen."""
-        # Beard error → rejoin → loading bar (same priority as the AFK cycle).
+        """Infer where we are in the AFK flow from template matching only."""
         if self._screen.screen_visible(HAZELNUT_IMAGE):
             return "hazelnut"
         if self._screen.screen_visible(REJOIN_IMAGE):
             return "rejoin"
-        loading_visible, _, _ = self._screen.loading_bar_visible()
-        if loading_visible:
-            return "loading"
         return "in_game"
 
     async def _accept_hazelnut(self, *, already_visible: bool = False) -> bool:
@@ -368,46 +359,6 @@ class AntiAfkManager:
             return False
         return await self._wait_for_load_in()
 
-    async def _resume_from_loading_bar(self) -> bool:
-        """Loading bar visible — next screen may be in-world or connection error."""
-        self._write_log("Loading bar visible while resuming AFK — polling for next screen")
-        await self._emit(
-            AfkStatusPayload(
-                type="text",
-                message="Resuming — loading bar visible",
-                phase=AFK_PHASE_RESUME_LOADING,
-            ),
-            log=False,
-        )
-        while self._enabled:
-            if self._screen.screen_visible(HAZELNUT_IMAGE):
-                self._write_log("Error dialog appeared during load")
-                if not await self._accept_hazelnut(already_visible=True):
-                    return False
-                return await self._accept_rejoin()
-            if self._screen.screen_visible(REJOIN_IMAGE):
-                self._write_log("Rejoin prompt appeared during load")
-                return await self._accept_rejoin(already_visible=True)
-            loading_visible, dark_ratio, avg_lum = self._screen.loading_bar_visible()
-            self._write_log(
-                f"Loading bar poll — {'visible' if loading_visible else 'not visible'} "
-                f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})"
-            )
-            if not loading_visible:
-                self._write_log("Loading bar cleared — assuming back in world")
-                await self._emit(
-                    AfkStatusPayload(
-                        type="text",
-                        message="Back in world",
-                        phase=AFK_PHASE_LOADED,
-                    ),
-                    log=False,
-                )
-                await self._sleep_between_actions()
-                return True
-            await asyncio.sleep(SCREEN_POLL_SECONDS)
-        return False
-
     async def _resume_from_detected_screen(self) -> bool:
         """Continue the AFK cycle from the current game screen instead of restarting."""
         if not await self._focus_game():
@@ -431,9 +382,6 @@ class AntiAfkManager:
             await self._sleep_between_actions()
             return True
 
-        if screen_state == "loading":
-            return await self._resume_from_loading_bar()
-
         await self._emit(
             AfkStatusPayload(
                 type="text",
@@ -446,7 +394,7 @@ class AntiAfkManager:
         return True
 
     async def _wait_for_load_in(self) -> bool:
-        self._write_log("Waiting for load-in (bottom loading bar)")
+        """Fixed wait after rejoin — no black-bar detection in the AFK macro."""
         await self._emit(
             AfkStatusPayload(
                 type="text",
@@ -455,16 +403,13 @@ class AntiAfkManager:
             ),
             log=False,
         )
-        if self._session_load is None:
-            await self._fatal_error("Load tracker not configured")
-            return False
-        self._session_load.cancel()
-        if not await self._session_load.wait_until_loaded(
-            should_continue=lambda: self._enabled,
-        ):
-            if self._enabled:
-                await self._fatal_error("Timed out waiting to load in")
-            return False
+        await self._countdown_sleep(
+            LOAD_IN_WAIT_SECONDS,
+            prefix="Waiting to load in",
+            mode="compact",
+            log_message=f"Sleeping {LOAD_IN_WAIT_SECONDS}s after rejoin",
+            phase=AFK_PHASE_LOAD_IN,
+        )
         await self._emit(
             AfkStatusPayload(
                 type="text",
@@ -473,7 +418,7 @@ class AntiAfkManager:
             ),
             log=False,
         )
-        self._write_log("Load-in complete (loading bar gone)")
+        self._write_log(f"Load-in wait complete ({LOAD_IN_WAIT_SECONDS}s)")
         return True
 
     async def _run_full_cycle(self) -> bool:
