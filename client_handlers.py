@@ -137,6 +137,12 @@ def register_client_handlers(
         logger.warning("Disconnected from server; will retry connection")
 
     @sio.event()
+    async def request_session_sync(data=None):
+        del data
+        logger.info("Controller online — re-syncing session state to server")
+        await sync_session_to_server()
+
+    @sio.event()
     async def anti_afk(data):
         if not isinstance(data, dict):
             return

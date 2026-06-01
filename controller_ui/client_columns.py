@@ -121,12 +121,19 @@ class ActiveColumn(ClientColumnSpec):
         table.setCellWidget(row, column_index, window._centered_cell_widget(checkbox))
 
 
+def resize_name_column(table: QTableWidget) -> None:
+    index = column_index("name")
+    table.resizeColumnToContents(index)
+    table.setColumnWidth(index, table.columnWidth(index) + 4)
+
+
 def refresh_client_name_holo(client: "Client", manager: "ClientManager") -> None:
     label = client.name_label
     if not isinstance(label, HolographicNameLabel):
         return
     size = manager.match_group_size_for(client)
     label.set_holo_tier(holo_tier_for_group_size(size))
+    label._apply_text_width_hint()
 
 
 class NameColumn(ClientColumnSpec):
@@ -144,7 +151,8 @@ class NameColumn(ClientColumnSpec):
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(8, 0, 4, 0)
-        layout.addWidget(label, 1)
+        layout.setSpacing(0)
+        layout.addWidget(label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         table.setCellWidget(row, column_index, container)
 
 

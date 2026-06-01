@@ -61,7 +61,10 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
             match=data.get("match"),
             selected_region=controller.region_combo.currentText(),
         )
-        controller.client_manager.update_biggest_match(controller.biggest_match_label)
+        controller.client_manager.update_biggest_match(
+            controller.biggest_match_label,
+            table=controller.client_table,
+        )
         controller.handle_automation_status(data)
 
     @controller.sio.event()
