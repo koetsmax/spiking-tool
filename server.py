@@ -40,6 +40,9 @@ class SpikingServer:
         self.clients = {}
         self.controller = None
         self.region = None
+        # Last AFK payloads per client — replayed when the controller (re)connects.
+        self._afk_state_cache: dict[str, dict] = {}
+        self._afk_status_cache: dict[str, dict] = {}
         self._register_handlers()
 
     def _game_clients(self) -> list["SpikingServer.Client"]:
@@ -63,6 +66,68 @@ class SpikingServer:
                 room=self.controller,
             )
 
+    async def _replay_afk_to_controller(self) -> None:
+        if not self.controller:
+            return
+        connected = set(self._game_client_roster())
+        for display_name, state in self._afk_state_cache.items():
+            if display_name not in connected:
+                continue
+            await self.sio.emit(
+                "afk_state",
+                data={"client": display_name, **state},
+                room=self.controller,
+            )
+        for display_name, status in self._afk_status_cache.items():
+            if display_name not in connected:
+                continue
+            await self.sio.emit(
+                "afk_status",
+                data={"client": display_name, **status},
+                room=self.controller,
+            )
+
+    async def _request_clients_session_sync(self) -> None:
+        for client in self._game_clients():
+            await self.sio.emit("request_session_sync", to=client.sio)
+
+    async def _on_controller_ready(self) -> None:
+        await self._notify_controller_roster()
+        await self._replay_afk_to_controller()
+        await self._request_clients_session_sync()
+
+    def _cache_afk_state(self, display_name: str, data: dict) -> None:
+        self._afk_state_cache[display_name] = {
+            "enabled": bool(data.get("enabled")),
+            "preserve_status": bool(data.get("preserve_status")),
+        }
+
+    def _cache_afk_status(self, display_name: str, data: dict) -> None:
+        if data.get("type") == "clear":
+            self._afk_status_cache.pop(display_name, None)
+            return
+        self._afk_status_cache[display_name] = dict(data)
+
+    async def _forward_afk_state(self, display_name: str, data: dict) -> None:
+        self._cache_afk_state(display_name, data)
+        if not self.controller:
+            return
+        await self.sio.emit(
+            "afk_state",
+            data={"client": display_name, **data},
+            room=self.controller,
+        )
+
+    async def _forward_afk_status(self, display_name: str, data: dict) -> None:
+        self._cache_afk_status(display_name, data)
+        if not self.controller:
+            return
+        await self.sio.emit(
+            "afk_status",
+            data={"client": display_name, **data},
+            room=self.controller,
+        )
+
     def _register_handlers(self) -> None:
         @self.sio.event
         async def connect(sid, environ, auth):
@@ -84,7 +149,10 @@ class SpikingServer:
                 logger.info("Client connected: %s (auth name=%s)", display_name, parsed["name"])
             elif parsed["type"] == "controller":
                 logger.info("Controller connected")
-            await self._notify_controller_roster()
+            if parsed["type"] == "controller":
+                await self._on_controller_ready()
+            else:
+                await self._notify_controller_roster()
 
         @self.sio.event
         async def disconnect(sid):
@@ -93,6 +161,8 @@ class SpikingServer:
             client = self.clients[sid]
             if client.type == "client":
                 logger.info("Client disconnected: %s", client.display_name)
+                self._afk_state_cache.pop(client.display_name, None)
+                self._afk_status_cache.pop(client.display_name, None)
             elif client.type == "controller":
                 logger.info("Controller disconnected")
             if sid == self.controller:
@@ -167,6 +237,7 @@ class SpikingServer:
             if sid != self.controller:
                 return
             await self._notify_controller_roster()
+            await self._replay_afk_to_controller()
 
         @self.sio.event
         async def kill_client(sid, data):
@@ -189,26 +260,19 @@ class SpikingServer:
         async def afk_status(sid, data):
             client = self._display_name_for_sid(sid)
             if isinstance(data, dict):
-                await self.sio.emit(
-                    "afk_status",
-                    data={"client": client, **data},
-                    room=self.controller,
-                )
+                await self._forward_afk_status(client, data)
             else:
-                await self.sio.emit(
-                    "afk_status",
-                    data={"client": client, "type": "text", "message": str(data)},
-                    room=self.controller,
+                await self._forward_afk_status(
+                    client,
+                    {"type": "text", "message": str(data)},
                 )
 
         @self.sio.event
         async def afk_state(sid, data):
+            if not isinstance(data, dict):
+                return
             client = self._display_name_for_sid(sid)
-            await self.sio.emit(
-                "afk_state",
-                data={"client": client, **data},
-                room=self.controller,
-            )
+            await self._forward_afk_state(client, data)
 
         @self.sio.event
         async def set_anti_afk(sid, data):
