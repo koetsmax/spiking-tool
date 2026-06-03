@@ -151,7 +151,7 @@ async def main():
     automation = sot.AutomationManager()
     anti_afk_manager = sot.AntiAfkManager(connection, screen=automation.screen)
     client_state = ClientSessionState()
-    register_client_handlers(
+    _, periodic_checks = register_client_handlers(
         sio,
         config["name"],
         connection,
@@ -162,36 +162,39 @@ async def main():
 
     auth = {"name": config["name"], "type": "client"}
 
-    while True:
-        try:
-            if sio.connected:
-                await sio.disconnect()
-        except Exception:
-            pass
+    try:
+        while True:
+            try:
+                if sio.connected:
+                    await sio.disconnect()
+            except Exception:
+                pass
 
-        try:
-            await sio.connect(config["url"], auth=auth)
-            await sio.wait()
-        except socketio.exceptions.ConnectionError:
-            if not client_state.connected_once:
-                logger.error("Unable to connect to server at %s", config["url"])
-                connection.stop()
-                os._exit(1)
-            logger.warning(
-                "Disconnected from server (AFK and automation keep running); retrying in %ss",
-                RECONNECT_DELAY_SECONDS,
-            )
-            await asyncio.sleep(RECONNECT_DELAY_SECONDS)
-        except Exception:
-            if not client_state.connected_once:
-                logger.exception("Client failed before connecting to server")
-                connection.stop()
-                os._exit(1)
-            logger.exception(
-                "Server connection error (local automation continues); retrying in %ss",
-                RECONNECT_DELAY_SECONDS,
-            )
-            await asyncio.sleep(RECONNECT_DELAY_SECONDS)
+            try:
+                await sio.connect(config["url"], auth=auth)
+                await sio.wait()
+            except socketio.exceptions.ConnectionError:
+                if not client_state.connected_once:
+                    logger.error("Unable to connect to server at %s", config["url"])
+                    connection.stop()
+                    os._exit(1)
+                logger.warning(
+                    "Disconnected from server (AFK and automation keep running); retrying in %ss",
+                    RECONNECT_DELAY_SECONDS,
+                )
+                await asyncio.sleep(RECONNECT_DELAY_SECONDS)
+            except Exception:
+                if not client_state.connected_once:
+                    logger.exception("Client failed before connecting to server")
+                    connection.stop()
+                    os._exit(1)
+                logger.exception(
+                    "Server connection error (local automation continues); retrying in %ss",
+                    RECONNECT_DELAY_SECONDS,
+                )
+                await asyncio.sleep(RECONNECT_DELAY_SECONDS)
+    finally:
+        await periodic_checks.stop()
 
 
 def _running_frozen() -> bool:

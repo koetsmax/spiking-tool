@@ -19,6 +19,12 @@ from spiking_tool.client_session import ClientSessionState
 from spiking_tool.client_socket import safe_emit
 from spiking_tool.client_log import client_diagnostic_log
 from spiking_tool.logging_setup import format_log_timestamp
+from spiking_tool.periodic_checks import (
+    PeriodicCheckContext,
+    PeriodicCheckResult,
+    PeriodicCheckRunner,
+    default_periodic_checks,
+)
 from spiking_tool.remote_log import remote_log_bridge
 
 logger = logging.getLogger(__name__)
@@ -34,7 +40,7 @@ def register_client_handlers(
     automation: AutomationManager,
     anti_afk_manager: AntiAfkManager,
     state: Optional[ClientSessionState] = None,
-) -> ClientSessionState:
+) -> tuple[ClientSessionState, PeriodicCheckRunner]:
     if state is None:
         state = ClientSessionState()
 
@@ -66,6 +72,9 @@ def register_client_handlers(
             {"enabled": enabled, "preserve_status": preserve_status},
         )
 
+    async def on_afk_state_changed(enabled: bool, preserve_status: bool = False) -> None:
+        await emit_afk_state(enabled, preserve_status)
+
     async def sync_session_to_server() -> None:
         """Push remembered state after reconnecting to the server/controller."""
         connection.region = sot.region_from_name(state.region_name)
@@ -93,7 +102,6 @@ def register_client_handlers(
 
     automation.set_status_emitter(emit_client_status)
     anti_afk_manager.set_status_callback(emit_afk_status)
-    anti_afk_manager.set_state_callback(emit_afk_state)
     anti_afk_manager.set_log_callback(
         lambda message, level="INFO": client_diagnostic_log(f"[AFK] {message}", level)
     )
@@ -104,10 +112,43 @@ def register_client_handlers(
         log=lambda message, level="INFO": client_diagnostic_log(f"[Load] {message}", level),
     )
     automation.set_session_load_tracker(session_load)
+    anti_afk_manager.set_session_load_tracker(session_load)
+
+    async def on_periodic_check_failure(result: PeriodicCheckResult) -> None:
+        client_diagnostic_log(
+            f"[Health] {result.check_id}: {result.message}",
+            result.level,
+        )
+        await emit_client_status(result.message)
+        if anti_afk_manager.enabled:
+            await anti_afk_manager.stop()
+
+    periodic_checks = PeriodicCheckRunner(
+        default_periodic_checks(automation.screen),
+        context=PeriodicCheckContext(
+            screen=automation.screen,
+            on_failure=on_periodic_check_failure,
+            should_run=lambda: anti_afk_manager.enabled,
+            log=lambda message, level="INFO": client_diagnostic_log(f"[Health] {message}", level),
+        ),
+    )
+
+    async def on_afk_state_changed(enabled: bool, preserve_status: bool = False) -> None:
+        await emit_afk_state(enabled, preserve_status)
+        if enabled:
+            client_diagnostic_log("[Health] Anti-AFK enabled — periodic checks will run now", "INFO")
+
+    anti_afk_manager.set_state_callback(on_afk_state_changed)
+    periodic_checks.start()
+    logger.info(
+        "Periodic health checks registered (%s) — active while anti-AFK is enabled",
+        ", ".join(periodic_checks.check_ids),
+    )
 
     async def shutdown(_data=None) -> None:
         remote_log_bridge.enqueue("Shutdown requested from controller", "INFO")
         automation.stop = True
+        await periodic_checks.stop()
         await anti_afk_manager.stop()
         connection.stop()
         os._exit(0)
@@ -271,7 +312,7 @@ def register_client_handlers(
 
     connection.events.join += on_join  # pylint: disable=no-member
 
-    return state
+    return state, periodic_checks
 
 
 def _pending_resolution_metric(automation: AutomationManager) -> dict[str, str]:

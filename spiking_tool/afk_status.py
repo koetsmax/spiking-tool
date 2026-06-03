@@ -26,8 +26,8 @@ AFK_PHASE_ERROR = "error"
 AFK_PHASE_DESCRIPTIONS: dict[str, str] = {
     AFK_PHASE_ENABLED: (
         "Anti-AFK is on. Each cycle sends Space, drops your connection for 45 seconds, "
-        "waits for the connection error dialog, rejoins, waits for the world to load, "
-        "then idles before repeating."
+        "waits 8 minutes on the connection error screen, accepts the error, rejoins, "
+        "waits for the world to load, then idles before repeating."
     ),
     AFK_PHASE_ACTIVITY: "Pressing Space to register activity before the disconnect cycle.",
     AFK_PHASE_DISCONNECT: (
@@ -35,12 +35,12 @@ AFK_PHASE_DESCRIPTIONS: dict[str, str] = {
         "You will disconnect from the server during this step."
     ),
     AFK_PHASE_POST_DISCONNECT_WAIT: (
-        "Waiting about 8 minutes for the 'could not connect' (beard) error dialog. "
-        "You have 10 minutes to reconnect after a forced disconnect."
+        "After the forced disconnect, the 'could not connect' (beard) error screen is already shown. "
+        "Waiting 8 minutes on that screen before accepting the error and continuing to rejoin."
     ),
     AFK_PHASE_HAZELNUT_WAIT: (
-        "Watching the screen for the connection error dialog. "
-        "Will press Enter automatically when it appears."
+        "Accepting the connection error (pressing Enter on the beard dialog), "
+        "then continuing to the rejoin prompt."
     ),
     AFK_PHASE_REJOIN_WAIT: (
         "Watching for the 'rejoin your session' prompt after accepting the error. "
@@ -64,19 +64,19 @@ AFK_PHASE_DESCRIPTIONS: dict[str, str] = {
 
 _COUNTDOWN_PREFIX_PHASE: dict[str, str] = {
     "Dropping connection": AFK_PHASE_DISCONNECT,
-    "Waiting for error dialog": AFK_PHASE_POST_DISCONNECT_WAIT,
+    "On connection error — waiting to accept": AFK_PHASE_POST_DISCONNECT_WAIT,
     "Idle before next cycle": AFK_PHASE_IDLE,
 }
 
 _TEXT_MESSAGE_PHASE: dict[str, str] = {
     "Running — starting cycle": AFK_PHASE_ENABLED,
     "Pressing Space": AFK_PHASE_ACTIVITY,
-    "Watching for error dialog": AFK_PHASE_HAZELNUT_WAIT,
+    "Accepting connection error": AFK_PHASE_HAZELNUT_WAIT,
     "Watching for rejoin prompt": AFK_PHASE_REJOIN_WAIT,
     "Loading into world": AFK_PHASE_LOAD_IN,
     "Back in world": AFK_PHASE_LOADED,
     "Resuming at rejoin prompt": AFK_PHASE_REJOIN_WAIT,
-    "Resuming at error dialog": AFK_PHASE_HAZELNUT_WAIT,
+    "Resuming — accepting connection error": AFK_PHASE_HAZELNUT_WAIT,
     "Resuming in world": AFK_PHASE_LOADED,
     "Resuming — loading bar visible": AFK_PHASE_RESUME_LOADING,
 }
