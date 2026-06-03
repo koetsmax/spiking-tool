@@ -37,9 +37,9 @@ _NAME_HORIZONTAL_PADDING = 12
 
 
 def holo_tier_for_group_size(group_size: int | None) -> NameHoloTier:
-    if group_size is None or group_size <= 3:
+    if group_size is None or group_size <= 4:
         return "default"
-    if group_size >= 5:
+    if group_size == 6:
         return "titan"
     return "gold"
 

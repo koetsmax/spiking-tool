@@ -260,7 +260,7 @@ _AFK_OFF_TOOLTIP = (
 )
 _AFK_ON_TOOLTIP = (
     "Anti-AFK is on for this client. Hover the AFK status column for what it is doing "
-    "right now (disconnect, wait for error dialog, rejoin, load in, idle, etc.).\n\n"
+    "right now (disconnect, wait on connection error, accept and rejoin, load in, idle, etc.).\n\n"
     + AFK_PHASE_DESCRIPTIONS[AFK_PHASE_ENABLED]
 )
 
@@ -302,7 +302,7 @@ class AfkToggleColumn(ClientColumnSpec):
 class AfkStatusColumn(ClientColumnSpec):
     _HEADER_TOOLTIP = (
         "Current Anti-AFK step for this client. Hover a cell for a full explanation "
-        "(e.g. dropping connection, waiting for the error dialog, rejoining, loading in)."
+        "(e.g. dropping connection, waiting on connection error, accepting and rejoining, loading in)."
     )
 
     def __init__(self) -> None:

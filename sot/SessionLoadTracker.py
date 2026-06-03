@@ -131,7 +131,12 @@ class SessionLoadTracker:
             if visible:
                 seen_loading = True
             if seen_loading and not visible:
-                return True
+                if await self._screen.confirm_loading_bar_gone(
+                    log=lambda message: self._write_log(message),
+                    should_continue=should_continue,
+                ):
+                    return True
+                self._write_log("Loading bar visible again after confirm wait — still loading")
             if not seen_loading and not visible and elapsed >= NO_LOADING_SEEN_TIMEOUT_SECONDS:
                 return True
 

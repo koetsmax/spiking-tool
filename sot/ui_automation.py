@@ -22,11 +22,12 @@ GAME_CLOSE_POLL_SECONDS = 0.5
 GAME_CLOSE_TIMEOUT_SECONDS = 30.0
 IMAGE_CONFIDENCE = 0.9
 SCREEN_POLL_SECONDS = 0.5
-# Bottom loading bar: nearly featureless black strip — template match false-positives on dark UI.
-# Pixel darkness and region average use separate thresholds so dim night loads still match.
-LOADING_BAR_PIXEL_DARK_LUMINANCE = 65
-LOADING_BAR_MAX_AVG_LUMINANCE = 78
-LOADING_BAR_DARK_RATIO = 0.38
+# Bottom loading bar: flat black strip (observed: ~100% dark, avg lum ~0 when real;
+# in-world bottom edge false-positive: ~55% dark, avg lum ~63).
+LOADING_BAR_PIXEL_DARK_LUMINANCE = 40
+LOADING_BAR_MAX_AVG_LUMINANCE = 30
+LOADING_BAR_DARK_RATIO = 0.90
+LOADING_BAR_GONE_CONFIRM_SECONDS = 5.0
 LOADING_BAR_HEIGHT_FRACTION = 0.06
 LOADING_BAR_WIDTH_FRACTION = 0.7
 LOADING_BAR_BOTTOM_INSET_FRACTION = 0.02
@@ -401,6 +402,20 @@ class GameScreenMatcher:
         except pyautogui.ImageNotFoundException:
             return False
 
+    def locate_on_desktop(self, image_path: str, confidence: float = IMAGE_CONFIDENCE):
+        """Template match anywhere on the primary display (not scoped to the game window)."""
+        try:
+            return pyautogui.locateOnScreen(image_path, confidence=confidence)
+        except ValueError:
+            logger.warning("Template %s does not fit the desktop screen", image_path)
+            return None
+
+    def screen_visible_on_desktop(self, image_path: str, confidence: float = IMAGE_CONFIDENCE) -> bool:
+        try:
+            return self.locate_on_desktop(image_path, confidence) is not None
+        except pyautogui.ImageNotFoundException:
+            return False
+
     def loading_bar_visible(self) -> tuple[bool, float, float]:
         """
         Detect the bottom loading bar via pixel sampling.
@@ -446,6 +461,32 @@ class GameScreenMatcher:
             and avg_lum <= LOADING_BAR_MAX_AVG_LUMINANCE
         )
         return visible, dark_ratio, avg_lum
+
+    async def confirm_loading_bar_gone(
+        self,
+        *,
+        confirm_seconds: float = LOADING_BAR_GONE_CONFIRM_SECONDS,
+        log: Callable[[str], None] | None = None,
+        should_continue: Callable[[], bool] | None = None,
+    ) -> bool:
+        """
+        After a poll says the bar is gone, wait and sample again before trusting it.
+        Returns True only if the bar is still not visible after the wait.
+        """
+        if should_continue is not None and not should_continue():
+            return False
+        if log:
+            log(f"Loading bar appears gone — waiting {confirm_seconds:.0f}s to confirm")
+        await asyncio.sleep(confirm_seconds)
+        if should_continue is not None and not should_continue():
+            return False
+        visible, dark_ratio, avg_lum = self.loading_bar_visible()
+        if log:
+            log(
+                f"Loading bar confirm check — {'visible' if visible else 'not visible'} "
+                f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})"
+            )
+        return not visible
 
     async def wait_for_screen(self, image_path: str, message: Optional[str] = None, confidence: float = IMAGE_CONFIDENCE) -> bool:
         while True:
