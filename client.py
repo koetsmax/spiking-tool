@@ -16,8 +16,7 @@ import logging
 import sot
 from client_handlers import ClientSessionState, register_client_handlers
 from spiking_tool.client_update import maybe_update_client
-from spiking_tool.local_log import install_client_local_file_logging
-from spiking_tool.remote_log import install_client_remote_logging
+from spiking_tool.client_logging import install_client_logging
 from spiking_tool.win_console import hide_console_window
 
 VERSION = "3.4.2"
@@ -91,8 +90,7 @@ def _show_console() -> bool:
 
 async def main():
     show_console = _show_console()
-    install_client_local_file_logging()
-    install_client_remote_logging(console_output=show_console)
+    install_client_logging(console_output=show_console)
     if not show_console:
         hide_console_window()
 

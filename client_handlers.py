@@ -17,16 +17,17 @@ from sot.ConnectionManager import ConnectionManager
 from sot.SessionLoadTracker import SessionLoadTracker
 from spiking_tool.client_session import ClientSessionState
 from spiking_tool.client_socket import safe_emit
-from spiking_tool.client_log import client_diagnostic_log
-from spiking_tool.logging_setup import format_log_timestamp
+from spiking_tool.client_logging import (
+    attach_client_log_transport,
+    client_log,
+    start_client_log_pump,
+)
 from spiking_tool.periodic_checks import (
     PeriodicCheckContext,
     PeriodicCheckResult,
     PeriodicCheckRunner,
     default_periodic_checks,
 )
-from spiking_tool.remote_log import remote_log_bridge
-
 logger = logging.getLogger(__name__)
 
 # Backward-compatible alias
@@ -95,27 +96,24 @@ def register_client_handlers(
         if state.last_afk_status is not None:
             await emit_afk_status(state.last_afk_status)
         await safe_emit(sio, "client_metric", _pending_resolution_metric(automation))
-        remote_log_bridge.enqueue(
-            f"[{format_log_timestamp()}] Reconnected — restored session state to controller",
-            "INFO",
-        )
+        client_log("Reconnected — restored session state to controller", "INFO")
 
     automation.set_status_emitter(emit_client_status)
     anti_afk_manager.set_status_callback(emit_afk_status)
     anti_afk_manager.set_log_callback(
-        lambda message, level="INFO": client_diagnostic_log(f"[AFK] {message}", level)
+        lambda message, level="INFO": client_log(f"[AFK] {message}", level)
     )
 
     session_load = SessionLoadTracker(
         automation.screen,
         should_stop=lambda: automation.stop,
-        log=lambda message, level="INFO": client_diagnostic_log(f"[Load] {message}", level),
+        log=lambda message, level="INFO": client_log(f"[Load] {message}", level),
     )
     automation.set_session_load_tracker(session_load)
     anti_afk_manager.set_session_load_tracker(session_load)
 
     async def on_periodic_check_failure(result: PeriodicCheckResult) -> None:
-        client_diagnostic_log(
+        client_log(
             f"[Health] {result.check_id}: {result.message}",
             result.level,
         )
@@ -129,14 +127,14 @@ def register_client_handlers(
             screen=automation.screen,
             on_failure=on_periodic_check_failure,
             should_run=lambda: anti_afk_manager.enabled,
-            log=lambda message, level="INFO": client_diagnostic_log(f"[Health] {message}", level),
+            log=lambda message, level="INFO": client_log(f"[Health] {message}", level),
         ),
     )
 
     async def on_afk_state_changed(enabled: bool, preserve_status: bool = False) -> None:
         await emit_afk_state(enabled, preserve_status)
         if enabled:
-            client_diagnostic_log("[Health] Anti-AFK enabled — periodic checks will run now", "INFO")
+            client_log("[Health] Anti-AFK enabled — periodic checks will run now", "INFO")
 
     anti_afk_manager.set_state_callback(on_afk_state_changed)
     periodic_checks.start()
@@ -146,7 +144,7 @@ def register_client_handlers(
     )
 
     async def shutdown(_data=None) -> None:
-        remote_log_bridge.enqueue("Shutdown requested from controller", "INFO")
+        client_log("Shutdown requested from controller", "INFO")
         automation.stop = True
         await periodic_checks.stop()
         await anti_afk_manager.stop()
@@ -161,17 +159,16 @@ def register_client_handlers(
     @sio.event()
     async def connect():
         state.connected_once = True
-        remote_log_bridge.attach(sio, identity["display_name"])
-        remote_log_bridge.start_pump_task()
+        attach_client_log_transport(sio, identity["display_name"])
+        start_client_log_pump()
         logger.info("Connected to server; restoring session state")
         await sync_session_to_server()
         asyncio.create_task(automation.emit_resolution_metric(sio, force=True))
 
     @sio.event()
     async def disconnect():
-        remote_log_bridge.enqueue(
-            f"[{format_log_timestamp()}] Disconnected from server — "
-            "local automation continues; will retry connection",
+        client_log(
+            "Disconnected from server — local automation continues; will retry connection",
             "WARNING",
         )
         logger.warning("Disconnected from server; will retry connection")
@@ -187,14 +184,14 @@ def register_client_handlers(
         if not isinstance(data, dict):
             return
         enabled = bool(data.get("enabled"))
-        remote_log_bridge.enqueue(f"[AFK] Controller set anti-AFK to {enabled}", "INFO")
+        client_log(f"[AFK] Controller set anti-AFK to {enabled}", "INFO")
         await anti_afk_manager.set_enabled(enabled)
 
     @sio.event()
     async def client_identity(data):
         identity["display_name"] = data["display_name"]
-        remote_log_bridge.attach(sio, identity["display_name"])
-        remote_log_bridge.enqueue(f"Assigned controller name: {identity['display_name']}", "INFO")
+        attach_client_log_transport(sio, identity["display_name"])
+        client_log(f"Assigned controller name: {identity['display_name']}", "INFO")
 
     async def run_if_selected(data, action: Callable[[], Awaitable[Any]]) -> None:
         if is_selected(data):
@@ -285,7 +282,7 @@ def register_client_handlers(
             session_load.forget_match()
             connection.forget_last_match()
             await emit_client_status("Pending...")
-            remote_log_bridge.enqueue("Forgot last match", "INFO")
+            client_log("Forgot last match", "INFO")
 
     @sio.event()
     async def fix_resolution(data):
@@ -295,10 +292,7 @@ def register_client_handlers(
         try:
             game = f"{match_data['game_ip']}:{match_data['game_port']}"
             management = f"{match_data['management_ip']}:{match_data['management_port']}"
-            remote_log_bridge.enqueue(
-                f"[{format_log_timestamp()}] Join match game={game} management={management}",
-                "INFO",
-            )
+            client_log(f"Join match game={game} management={management}", "INFO")
             state.prev_port = int(match_data["management_port"])
             session_load.record_match(state.prev_port)
             state.record_status(match_data["management_port"], match=match_data)
