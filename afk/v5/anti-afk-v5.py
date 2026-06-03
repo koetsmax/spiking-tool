@@ -28,7 +28,7 @@ keyboard.add_hotkey("f12", on_f12_press)
 
 
 async def main():
-    sotc = sot.DumbConnectionManager()
+    sotc = sot.ConnectionManager()
     current_time = time.time()
     while True:
         time.sleep(0.1)
