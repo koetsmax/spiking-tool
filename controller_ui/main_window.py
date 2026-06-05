@@ -299,12 +299,6 @@ class ControllerWindow(QMainWindow):
         layout.addWidget(self._section_label("Display"))
         self._add_action_button(
             layout,
-            "Run display diagnostics",
-            "display_diagnostics",
-            lambda: self.emit_client_event("display_diagnostics"),
-        )
-        self._add_action_button(
-            layout,
             "Fix game resolution (800x600)",
             "fix_resolution",
             lambda: self.emit_client_event("fix_resolution"),
@@ -453,17 +447,13 @@ class ControllerWindow(QMainWindow):
         self._apply_control(
             self.desired_port_mode_checkbox,
             not self.auto_spike_mode,
-            _TIP_AUTO_SPIKE_BLOCKS_DESIRED_PORT
-            if self.auto_spike_mode
-            else "",
+            _TIP_AUTO_SPIKE_BLOCKS_DESIRED_PORT if self.auto_spike_mode else "",
         )
 
         self._apply_control(
             self.auto_spike_mode_checkbox,
             not self.desired_port_mode,
-            _TIP_DESIRED_PORT_BLOCKS_AUTO_SPIKE
-            if self.desired_port_mode
-            else "",
+            _TIP_DESIRED_PORT_BLOCKS_AUTO_SPIKE if self.desired_port_mode else "",
         )
 
         desired_port_entry_on = self.desired_port_mode and not self.auto_spike_mode

@@ -158,7 +158,6 @@ def register_client_handlers(
         attach_client_log_transport(sio, identity["display_name"])
         start_client_log_pump()
         logger.info("Connected to server; restoring session state")
-        client_log(f"[Display] {automation.screen.format_display_diagnostics()}", "INFO")
         await sync_session_to_server()
         asyncio.create_task(automation.emit_resolution_metric(sio, force=True))
 
@@ -288,14 +287,6 @@ def register_client_handlers(
     @sio.event()
     async def fix_resolution(data):
         await run_if_selected(data, lambda: automation.report_game_resolution(sio))
-
-    @sio.event()
-    async def display_diagnostics(data):
-        async def action() -> None:
-            for line in automation.screen.display_debug_lines():
-                client_log(f"[Display] {line}", "INFO")
-
-        await run_if_selected(data, action)
 
     async def on_join(match_data):
         try:
