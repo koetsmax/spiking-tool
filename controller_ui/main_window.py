@@ -33,7 +33,6 @@ from sot.Region import core_regions
 from spiking_tool.ship_sail_delay import compute_sail_delay
 from threadedsio import ThreadedSocketClient
 
-_TIP_PORT_SPIKE_REQUIRED = "Enable Port spike first."
 _TIP_REJOIN_REQUIRES_PORT_SPIKE = "Rejoin session requires Port spike to be enabled."
 _TIP_AUTO_SPIKE_BLOCKS_MANUAL = (
     "Disabled while Auto spike mode is running — the controller resets and sails automatically."
@@ -300,6 +299,12 @@ class ControllerWindow(QMainWindow):
         layout.addWidget(self._section_label("Display"))
         self._add_action_button(
             layout,
+            "Run display diagnostics",
+            "display_diagnostics",
+            lambda: self.emit_client_event("display_diagnostics"),
+        )
+        self._add_action_button(
+            layout,
             "Fix game resolution (800x600)",
             "fix_resolution",
             lambda: self.emit_client_event("fix_resolution"),
@@ -447,28 +452,24 @@ class ControllerWindow(QMainWindow):
 
         self._apply_control(
             self.desired_port_mode_checkbox,
-            port_spike_on and not self.auto_spike_mode,
+            not self.auto_spike_mode,
             _TIP_AUTO_SPIKE_BLOCKS_DESIRED_PORT
             if self.auto_spike_mode
-            else _TIP_PORT_SPIKE_REQUIRED,
+            else "",
         )
 
         self._apply_control(
             self.auto_spike_mode_checkbox,
-            port_spike_on and not self.desired_port_mode,
+            not self.desired_port_mode,
             _TIP_DESIRED_PORT_BLOCKS_AUTO_SPIKE
             if self.desired_port_mode
-            else _TIP_PORT_SPIKE_REQUIRED,
+            else "",
         )
 
-        desired_port_entry_on = (
-            port_spike_on and self.desired_port_mode and not self.auto_spike_mode
-        )
+        desired_port_entry_on = self.desired_port_mode and not self.auto_spike_mode
         desired_port_tip = (
             _TIP_AUTO_SPIKE_BLOCKS_DESIRED_PORT
             if self.auto_spike_mode
-            else _TIP_PORT_SPIKE_REQUIRED
-            if not port_spike_on
             else _TIP_ENTER_PORT
         )
         self._apply_entry_row(
@@ -478,14 +479,10 @@ class ControllerWindow(QMainWindow):
             desired_port_tip,
         )
 
-        ships_entry_on = (
-            port_spike_on and self.auto_spike_mode and not self.desired_port_mode
-        )
+        ships_entry_on = self.auto_spike_mode and not self.desired_port_mode
         ships_tip = (
             _TIP_DESIRED_PORT_BLOCKS_AUTO_SPIKE
             if self.desired_port_mode
-            else _TIP_PORT_SPIKE_REQUIRED
-            if not port_spike_on
             else _TIP_ENTER_SHIP_COUNT
         )
         self._apply_entry_row(
@@ -513,11 +510,6 @@ class ControllerWindow(QMainWindow):
         self.sio.emit("region", self.region_combo.currentText())
 
     def set_port_spike(self, *_args):
-        if not self.portspike_checkbox.isChecked():
-            self.desired_port_mode_checkbox.setChecked(False)
-            self.auto_spike_mode_checkbox.setChecked(False)
-            self.desired_port_mode = False
-            self.auto_spike_mode = False
         self.sio.emit("portspiking", self.portspike_checkbox.isChecked())
         self._update_control_states()
 

@@ -113,7 +113,10 @@ class AutomationManager:
         fix_resolution: bool = False,
     ):
         if not fix_resolution:
-            return await self.screen.wait_for_screen(image_path, message=message)
+            if not await self.screen.wait_for_screen(image_path, message=message):
+                await self._emit_capture_failure(sio)
+                return False
+            return True
 
         polls = 0
         while True:
@@ -128,6 +131,14 @@ class AutomationManager:
             await asyncio.sleep(SCREEN_POLL_SECONDS)
             if self.stop:
                 return False
+            if self.screen.last_capture_error:
+                await self._emit_capture_failure(sio)
+                return False
+
+    async def _emit_capture_failure(self, sio) -> None:
+        error = self.screen.last_capture_error
+        if error:
+            await self.emit_status(sio, f"Screen capture failed — {error}")
 
     async def wait_for_play_screen(self, sio):
         async def on_promo_skipped():
@@ -138,9 +149,10 @@ class AutomationManager:
     async def dismiss_popup_if_visible(self, image_path):
         await self.screen.dismiss_popup_if_visible(image_path)
 
-    async def set_ship(self, sio, ship_type):
+    async def set_ship(self, sio, ship_type, *, emit_status: bool = True):
         self.ship = ship_type
-        await self.emit_status(sio,f"Ship set to {self.ship}")
+        if emit_status:
+            await self.emit_status(sio, f"Ship set to {self.ship}")
 
     async def launch_game(self, sio, leave):
         self._check_resolution_after_launch = True

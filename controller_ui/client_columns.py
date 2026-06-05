@@ -208,7 +208,9 @@ class ShipColumn(ClientColumnSpec):
         ship_type = client.ship_combo.currentText() if client.ship_combo else client.ship_type
         combo = NoScrollComboBox()
         combo.addItems(ship_types)
+        combo.blockSignals(True)
         combo.setCurrentText(ship_type)
+        combo.blockSignals(False)
         combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         combo.setMaximumWidth(112)
         client.ship_combo = combo

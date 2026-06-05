@@ -9,9 +9,16 @@ from typing import Awaitable, Callable, Literal, Optional, Tuple
 import keyboard
 import psutil
 import pyautogui
+import pyscreeze
 import win32con
 import win32gui
 import win32process
+
+from spiking_tool.desktop_capture import (
+    DisplayDiagnostics,
+    capture_hwnd_client,
+    collect_display_diagnostics,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +72,67 @@ class GameScreenMatcher:
 
     def __init__(self, should_stop: Optional[Callable[[], bool]] = None) -> None:
         self._should_stop = should_stop or (lambda: False)
+        self._last_capture_error: str = ""
+        self._last_display_diagnostics: DisplayDiagnostics | None = None
+
+    @property
+    def last_capture_error(self) -> str:
+        return self._last_capture_error
+
+    def collect_display_diagnostics(self) -> DisplayDiagnostics:
+        diagnostics = collect_display_diagnostics()
+        self._last_display_diagnostics = diagnostics
+        return diagnostics
+
+    def format_display_diagnostics(self) -> str:
+        diagnostics = self._last_display_diagnostics or self.collect_display_diagnostics()
+        return diagnostics.summary()
+
+    def display_debug_lines(self) -> list[str]:
+        """Lines for controller/client log when verifying display and capture."""
+        diagnostics = self.collect_display_diagnostics()
+        lines = [
+            f"Summary: {diagnostics.summary()}",
+        ]
+        if diagnostics.active_displays:
+            lines.append(f"Active displays: {', '.join(diagnostics.active_displays)}")
+        hwnd = self.find_sot_hwnd()
+        if hwnd:
+            width, height = self.get_client_size(hwnd)
+            visible = bool(win32gui.IsWindowVisible(hwnd))  # pylint: disable=c-extension-no-member
+            lines.append(f"SoT window: {width}x{height}, visible={visible}")
+            try:
+                image = capture_hwnd_client(hwnd)
+                lines.append(f"Window capture: ok ({image.size[0]}x{image.size[1]})")
+                self._last_capture_error = ""
+            except OSError as exc:
+                self._record_capture_failure(str(exc))
+                lines.append(f"Window capture: FAILED ({exc})")
+        else:
+            running = self.sotgame_running()
+            lines.append(f"SoT window: not found (sotgame.exe running={running})")
+        resolution = self.check_target_resolution()
+        lines.append(f"Resolution check: {resolution.status_message}")
+        if self.last_capture_error:
+            lines.append(f"Last capture error: {self.last_capture_error}")
+        return lines
+
+    def _record_capture_failure(self, message: str) -> None:
+        diagnostics = self.collect_display_diagnostics()
+        self._last_capture_error = f"{message} ({diagnostics.summary()})"
+        logger.warning("Screen capture failed: %s", self._last_capture_error)
+
+    def _capture_game_client_image(self):
+        hwnd = self.find_sot_hwnd()
+        if not hwnd:
+            raise OSError("SoT window not found")
+        try:
+            image = capture_hwnd_client(hwnd)
+            self._last_capture_error = ""
+            return image
+        except OSError as exc:
+            self._record_capture_failure(str(exc))
+            raise
 
     @staticmethod
     def _window_enumeration_handler(hwnd, top_windows) -> None:
@@ -139,9 +207,7 @@ class GameScreenMatcher:
             width, height = self.get_client_size(hwnd)
             if width < 100 or height < 100:
                 return True
-            candidates.append(
-                (hwnd, width * height, bool(win32gui.IsWindowVisible(hwnd)))  # pylint: disable=c-extension-no-member
-            )
+            candidates.append((hwnd, width * height, bool(win32gui.IsWindowVisible(hwnd))))  # pylint: disable=c-extension-no-member
             return True
 
         win32gui.EnumWindows(callback, None)  # pylint: disable=c-extension-no-member
@@ -382,39 +448,47 @@ class GameScreenMatcher:
         return (screen_left, screen_top, width, height)
 
     def locate_in_game(self, image_path: str, confidence: float = IMAGE_CONFIDENCE):
-        region = self.get_game_client_region()
-        kwargs: dict = {"confidence": confidence}
-        if region:
-            kwargs["region"] = region
         try:
-            return pyautogui.locateOnScreen(image_path, **kwargs)
+            haystack = self._capture_game_client_image()
+        except OSError:
+            return None
+        try:
+            return pyscreeze.locate(image_path, haystack, confidence=confidence)
+        except pyscreeze.ImageNotFoundException:
+            return None
         except ValueError:
             logger.warning(
-                "Template %s does not fit game client region %s (wrong resolution or fullscreen)",
+                "Template %s does not fit game client capture (wrong resolution or fullscreen?)",
                 image_path,
-                region,
             )
             return None
 
     def screen_visible(self, image_path: str, confidence: float = IMAGE_CONFIDENCE) -> bool:
+        return self.locate_in_game(image_path, confidence) is not None
+
+    def _desktop_screenshot(self, *, region=None):
         try:
-            return self.locate_in_game(image_path, confidence) is not None
-        except pyautogui.ImageNotFoundException:
-            return False
+            return pyautogui.screenshot(region=region)
+        except OSError as exc:
+            self._record_capture_failure(str(exc))
+            raise
 
     def locate_on_desktop(self, image_path: str, confidence: float = IMAGE_CONFIDENCE):
         """Template match anywhere on the primary display (not scoped to the game window)."""
         try:
-            return pyautogui.locateOnScreen(image_path, confidence=confidence)
+            haystack = self._desktop_screenshot()
+        except OSError:
+            return None
+        try:
+            return pyscreeze.locate(image_path, haystack, confidence=confidence)
+        except pyscreeze.ImageNotFoundException:
+            return None
         except ValueError:
             logger.warning("Template %s does not fit the desktop screen", image_path)
             return None
 
     def screen_visible_on_desktop(self, image_path: str, confidence: float = IMAGE_CONFIDENCE) -> bool:
-        try:
-            return self.locate_on_desktop(image_path, confidence) is not None
-        except pyautogui.ImageNotFoundException:
-            return False
+        return self.locate_on_desktop(image_path, confidence) is not None
 
     def loading_bar_visible(self) -> tuple[bool, float, float]:
         """
@@ -424,26 +498,22 @@ class GameScreenMatcher:
         black strip that matches dark UI elsewhere and never clears.
         Returns (visible, dark_ratio, average_luminance).
         """
-        region = self.get_game_client_region()
-        if not region:
+        try:
+            shot = self._capture_game_client_image()
+        except OSError:
             return False, 0.0, 0.0
 
-        left, top, width, height = region
+        width, height = shot.size
         bar_height = max(4, int(height * LOADING_BAR_HEIGHT_FRACTION))
         bar_width = int(width * LOADING_BAR_WIDTH_FRACTION)
-        bar_left = left + (width - bar_width) // 2
-        bar_top = top + height - bar_height - int(height * LOADING_BAR_BOTTOM_INSET_FRACTION)
-
-        try:
-            shot = pyautogui.screenshot(region=(bar_left, bar_top, bar_width, bar_height))
-        except Exception:
-            logger.exception("Failed to capture loading bar region")
-            return False, 0.0, 0.0
+        bar_left = (width - bar_width) // 2
+        bar_top = height - bar_height - int(height * LOADING_BAR_BOTTOM_INSET_FRACTION)
+        crop = shot.crop((bar_left, bar_top, bar_left + bar_width, bar_top + bar_height))
 
         total = 0
         dark = 0
         lum_sum = 0.0
-        for pixel in shot.getdata():
+        for pixel in crop.getdata():
             r, g, b = pixel[0], pixel[1], pixel[2]
             lum = (r + g + b) / 3
             lum_sum += lum
@@ -456,10 +526,7 @@ class GameScreenMatcher:
 
         dark_ratio = dark / total
         avg_lum = lum_sum / total
-        visible = (
-            dark_ratio >= LOADING_BAR_DARK_RATIO
-            and avg_lum <= LOADING_BAR_MAX_AVG_LUMINANCE
-        )
+        visible = dark_ratio >= LOADING_BAR_DARK_RATIO and avg_lum <= LOADING_BAR_MAX_AVG_LUMINANCE
         return visible, dark_ratio, avg_lum
 
     async def confirm_loading_bar_gone(
@@ -482,20 +549,23 @@ class GameScreenMatcher:
             return False
         visible, dark_ratio, avg_lum = self.loading_bar_visible()
         if log:
-            log(
-                f"Loading bar confirm check — {'visible' if visible else 'not visible'} "
-                f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})"
-            )
+            log(f"Loading bar confirm check — {'visible' if visible else 'not visible'} " f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})")
         return not visible
 
     async def wait_for_screen(self, image_path: str, message: Optional[str] = None, confidence: float = IMAGE_CONFIDENCE) -> bool:
+        warned_capture = False
         while True:
+            if self.last_capture_error and not warned_capture:
+                warned_capture = True
+                logger.error("Screen capture unavailable: %s", self.last_capture_error)
             if self.screen_visible(image_path, confidence):
                 return True
             if message:
                 print(message)
             await asyncio.sleep(SCREEN_POLL_SECONDS)
             if self._should_stop():
+                return False
+            if self.last_capture_error:
                 return False
 
     async def _dismiss_promo_video(self) -> None:

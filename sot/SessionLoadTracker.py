@@ -95,13 +95,23 @@ class SessionLoadTracker:
         self._task = None
         self._monitoring = False
 
+    def begin_load_wait(self) -> None:
+        """Stop sail monitoring and poll for a fresh load-in (e.g. after AFK rejoin)."""
+        self.cancel()
+        self._loaded = False
+
     def _loading_sample(self) -> tuple[bool, float, float]:
         return self._screen.loading_bar_visible()
 
-    def _log_loading_sample(self) -> bool:
+    def _log_loading_sample(self, *, status: str | None = None) -> bool:
         visible, dark_ratio, avg_lum = self._loading_sample()
-        status = self.waiting_to_load_status() if self._reset_waiting else self.loading_status()
-        self._write_log(f"{status} — loading bar " f"{'visible' if visible else 'not visible'} " f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})")
+        if status is None:
+            status = self.waiting_to_load_status() if self._reset_waiting else self.loading_status()
+        self._write_log(
+            f"{status} — loading bar "
+            f"{'visible' if visible else 'not visible'} "
+            f"(dark {dark_ratio * 100:.0f}%, avg lum {avg_lum:.0f})"
+        )
         return visible
 
     async def _poll_until_loaded(
@@ -160,7 +170,7 @@ class SessionLoadTracker:
         if self._loaded:
             return True
 
-        visible, _, _ = self._loading_sample()
+        visible = self._log_loading_sample(status="Load check")
         if already_loaded_ok and not self._reset_waiting and not visible and not self._monitoring:
             return True
 
