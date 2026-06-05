@@ -28,6 +28,7 @@ from spiking_tool.periodic_checks import (
     PeriodicCheckRunner,
     default_periodic_checks,
 )
+
 logger = logging.getLogger(__name__)
 
 # Backward-compatible alias
@@ -96,9 +97,7 @@ def register_client_handlers(
 
     automation.set_status_emitter(emit_client_status)
     anti_afk_manager.set_status_callback(emit_afk_status)
-    anti_afk_manager.set_log_callback(
-        lambda message, level="INFO": client_log(f"[AFK] {message}", level)
-    )
+    anti_afk_manager.set_log_callback(lambda message, level="INFO": client_log(f"[AFK] {message}", level))
 
     session_load = SessionLoadTracker(
         automation.screen,
