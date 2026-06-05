@@ -532,7 +532,7 @@ class AntiAfkManager:
         if self._session_load is None:
             await self._fatal_error("Load tracker not configured")
             return False
-        self._session_load.cancel()
+        self._session_load.begin_load_wait()
         if not await self._session_load.wait_until_loaded(
             should_continue=lambda: self._enabled,
         ):

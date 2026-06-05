@@ -54,6 +54,13 @@ def register_socket_handlers(controller: "ControllerWindow") -> None:
         controller.logging_tab.append_log(client_name, message)
 
     @controller.sio.event()
+    def client_ship_state(data):
+        client_name = data.get("client")
+        ship_type = data.get("ship_type")
+        if client_name and ship_type:
+            controller.client_manager.set_client_ship_type(client_name, ship_type)
+
+    @controller.sio.event()
     def update_status(data):
         controller.client_manager.set_client_status(
             data["client"],

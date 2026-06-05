@@ -83,15 +83,11 @@ def register_client_handlers(
         automation.ship = state.ship_type
         await safe_emit(sio, "region", state.region_name)
         await safe_emit(sio, "portspiking", state.portspike)
-        await safe_emit(
-            sio,
-            "change_ship",
-            {"client": identity["display_name"], "ship_type": state.ship_type},
-        )
         await emit_client_status(
             state.last_status,
             match=state.last_match,
         )
+        await safe_emit(sio, "ship_state", {"ship_type": state.ship_type})
         await emit_afk_state(anti_afk_manager.enabled, preserve_status=True)
         if state.last_afk_status is not None:
             await emit_afk_status(state.last_afk_status)
@@ -162,6 +158,7 @@ def register_client_handlers(
         attach_client_log_transport(sio, identity["display_name"])
         start_client_log_pump()
         logger.info("Connected to server; restoring session state")
+        client_log(f"[Display] {automation.screen.format_display_diagnostics()}", "INFO")
         await sync_session_to_server()
         asyncio.create_task(automation.emit_resolution_metric(sio, force=True))
 
@@ -213,9 +210,13 @@ def register_client_handlers(
 
     @sio.event()
     async def client_ship(data):
-        if data["client"] == identity["display_name"]:
-            state.record_ship(data["ship_type"])
-            await automation.set_ship(sio, data["ship_type"])
+        if data["client"] != identity["display_name"]:
+            return
+        ship_type = data["ship_type"]
+        state.record_ship(ship_type)
+        if automation.ship == ship_type:
+            return
+        await automation.set_ship(sio, ship_type)
 
     @sio.event()
     async def launch_game(data):
@@ -287,6 +288,14 @@ def register_client_handlers(
     @sio.event()
     async def fix_resolution(data):
         await run_if_selected(data, lambda: automation.report_game_resolution(sio))
+
+    @sio.event()
+    async def display_diagnostics(data):
+        async def action() -> None:
+            for line in automation.screen.display_debug_lines():
+                client_log(f"[Display] {line}", "INFO")
+
+        await run_if_selected(data, action)
 
     async def on_join(match_data):
         try:

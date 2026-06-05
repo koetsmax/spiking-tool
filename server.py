@@ -213,6 +213,19 @@ class SpikingServer:
             await self.sio.emit("client_ship", data=data)
 
         @self.sio.event
+        async def ship_state(sid, data):
+            if not self.controller:
+                return
+            if not isinstance(data, dict):
+                return
+            client = self._display_name_for_sid(sid)
+            await self.sio.emit(
+                "client_ship_state",
+                data={"client": client, "ship_type": data.get("ship_type", "Brigantine")},
+                room=self.controller,
+            )
+
+        @self.sio.event
         async def client_event(sid, data):
             event = data["event"]
             targets = data.get("clients", [])

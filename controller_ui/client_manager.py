@@ -193,6 +193,16 @@ class ClientManager:
     def get_client(self, name: str) -> Optional[Client]:
         return self.clients.get(name)
 
+    def set_client_ship_type(self, name: str, ship_type: str) -> None:
+        client = self.clients.get(name)
+        if client is None:
+            return
+        client.ship_type = ship_type
+        if client.ship_combo is not None:
+            client.ship_combo.blockSignals(True)
+            client.ship_combo.setCurrentText(ship_type)
+            client.ship_combo.blockSignals(False)
+
     def set_client_status(
         self,
         name: str,

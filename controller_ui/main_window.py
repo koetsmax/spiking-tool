@@ -300,6 +300,12 @@ class ControllerWindow(QMainWindow):
         layout.addWidget(self._section_label("Display"))
         self._add_action_button(
             layout,
+            "Run display diagnostics",
+            "display_diagnostics",
+            lambda: self.emit_client_event("display_diagnostics"),
+        )
+        self._add_action_button(
+            layout,
             "Fix game resolution (800x600)",
             "fix_resolution",
             lambda: self.emit_client_event("fix_resolution"),
