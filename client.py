@@ -19,7 +19,7 @@ from spiking_tool.client_update import maybe_update_client
 from spiking_tool.client_logging import install_client_logging
 from spiking_tool.win_console import hide_console_window
 
-VERSION = "3.5.1"
+VERSION = "3.5.2"
 RECONNECT_DELAY_SECONDS = 3
 logger = logging.getLogger(__name__)
 
